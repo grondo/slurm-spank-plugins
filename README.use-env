@@ -1,0 +1,343 @@
+The use-env.so plugin for SLURM
+============================================================================
+
+SYNOPSIS
+
+The "use-env" spank(8) plugin for SLURM provides a simple facility for
+utilizing SLURM to initialize and/or modify the current environment for
+users launching jobs through srun(1).  When the plugin is enabled in the 
+spank plugin stack (plugstack.conf by default), it reads environment
+overrides from a default config file at srun initialization, and
+also allows user-selected environment overrides via the srun option
+"--use-env=name." When using --use-env=name, the config file
+loaded is from ~/.slurm/environment/<name> or /etc/slurm/environment/name.
+(~/.slurm/env-<name>.conf or /etc/slurm/env-<name>.conf is also
+supported for backwards compatibility, but these locations are
+deprecated and the file in environment/<name> is preferred)
+The format of the config file is described below.
+
+This plugin also supports generation of a different environment per
+task throught use of "in task" blocks, which are parsed by slurmd
+in task context just before calling exec(). See TASK BLOCKS below
+for more information.
+
+DEFAULT CONFIG
+
+The default config file is read from /etc/slurm/environment/default
+and is always used if it exists. A user default is also read
+from ~/.slurm/environment/default. Settings in the user file are applied
+after the global defaults in /etc/slurm so that user settings can
+override system defaults. The default environment settings are
+applied before any user-selected environment via the --use-env 
+option.
+
+The name of the global default config can be overridden by use of the 
+"default=" option to plugin, e.g., with the following line in 
+plugstack.conf:
+
+ required   use-env.so  default=mvapich
+
+would read /etc/slurm/environment/mvapich by default instead of
+/etc/slurm/environment/default. The user default file is always
+named "default" however.
+
+
+CONFIG FILE FORMAT
+
+Lines in the use-env config file(s) can have the following format.
+A '#' anywhere on the line indicates a comment. Statements
+are separated by newlines or semicolons ";".
+
+Config files can be included from other files with the "include" 
+statement 
+
+ include name
+
+will include file "name" from the same directory as the file
+in which the "include" was invoked. An absolute pathname
+may also be specified, e.g.:
+
+ include /etc/slurm/environment/foo
+
+TASK BLOCKS
+
+Configuration that should only be applied to remotely executed
+tasks may be specified in special "in task" blocks, which
+have the form
+
+ in task { statments... }
+
+This block, if present, will be read by each task in the job
+just before exec() is called. This allows the environment
+to be tailored for a specific task, for example:
+
+ in task {
+    if ($SLURM_PROCID == 0)
+	   LD_PRELOAD = "$LD_PRELOAD libdebug.so"
+	endif
+ }
+
+would append libdebug.so to LD_PRELOAD only for task 0 
+in the job. The rest of the config file is ignored 
+by the task. Likewise, these task blocks are ignored
+when the config file is parsed by srun (except for 
+syntax checking).
+
+
+ASSIGNMENT EXPRESSIONS
+
+The simplest form of expression in the config file is to assign
+a new value to an environment variable
+
+ identifier = value
+
+Where identifier is a valid environment variable of the form
+[A-Za-z_][0-9A-Za-Z_] and value can be any arbitrary quoted string
+or string literal. Environment variables (and other locally defined
+symbols or keywords) can be expanded by the familiar form of
+$ID or ${ID}. Variable expansion will occur in both unquoted and
+quoted strings. Whitespace outside of quoted strings is ignored.
+
+Examples of assignment are
+
+ MYENV = foo            # Valid: MYENV="foo"
+ MYENV2 = $MYENV/bar    # Valid: MYENV2="foo/bar"
+ MYENV3 = ${MYENV}bar   # Valid: MYENV3="foobar"
+ MYENV3 = "${MYENV}bar" # Valid: MYENV4="foobar"
+ MYENV4 = foo bar       # Invalid
+ MYENV5 = "foo bar"     # Valid: MYENV5="foo bar"
+ MYENV6 = "foo \"bar\"" # Valid: MYENV6="foo "bar""
+
+There are additional assignment operators that may be used in
+assignment expressions as well. These include:
+
+ "|="     Set new value only if identifier was previously unset.
+ "+="     Prepend value to colon-separated identifier (e.g. PATH)
+ "=+"     Append value to colon-separated identifier (e.g. PATH)
+
+For example:
+
+ MYENV = foo
+ MYENV |= bar  # Does nothing. MYENV="foo"
+
+ PATH = /usr/bin         # PATH = "/usr/bin"
+ PATH += /bin            # PATH = "/bin:/usr/bin"
+ PATH =+ /usr/local/bin  # PATH = "/bin:/usr/bin:/usr/local/bin"
+
+Note that
+
+ PATH += "/usr/bin"
+
+is the same as
+
+ PATH = /usr/bin:$PATH
+
+except that when $PATH is empty, the trailing ":" will not appear
+when using the "+=" operator.
+
+
+UNSET EXPRESSION
+
+Environment variables may also be unset using the simple 
+unset expression
+
+ unset identifier
+
+For example:
+
+ unset MYENV
+
+would unset the environment variable "MYENV" from the current env.
+
+
+AVAILABLE KEYWORDS
+
+A small set of keywords are available within the config file
+which describe current parameters of the executing job. These
+include
+
+ SLURM_JOBID   Current SLURM job id
+ SLURM_STEPID  Current SLURM job step id
+ SLURM_NNODES  Number of nodes in current job
+ SLURM_NPROCS  Number of processes in current job
+ SLURM_CMDLINE Remote command line for this job
+ SLURM_ARGC    Number of command line arguments
+ SLURM_ARGV*   Command line argument(s) ARGV0-ARGVN
+
+In task context, the following additional keywords are also available
+
+ SLURM_PROCID  Global task id or rank
+ SLURM_NODEID  Global node id
+
+These are called keywords because their values cannot be overridden
+by the user. However, they are referenced just like any other
+variable. 
+
+A full list of keywords and their values can be dumped to
+stderr with the "dump keywords" command. See the DEBUGGING
+section below.
+
+
+DEFINING LOCAL SYMBOLS
+
+Occaisionally it may be desireable to define new variables that are
+not exported to the current environment. The "define" keyword is used
+for this purpose
+
+ define identifier = value
+
+works much like the assignment expression, except that the variable
+is not exported to the local environment (and thus, not to the job).
+
+Locally defined variables such as these are undefined with the
+"undefine" keyword:
+
+ undefine n
+
+will delete "n" from the symbol table.
+
+
+CONDITIONAL EXPRESSIONS
+
+The use-env configuration file supports conditional expressions of
+the form
+
+ if (tests)
+    statements
+ else if (tests)
+    statements
+ else if ...
+    statements
+ else 
+    statements
+ endif
+
+Where ``tests'' can have combinations of the following formsa
+
+ value < value  # Numeric comparison only
+ value > value  # Numeric comparison only
+ value >= value # Numeric comparison only
+ value <- value # Numeric comparison only
+ value == value # Numeric or string compare
+ value !- value # Numeric or string compare
+ value          # True if var is not 0 or empty string; 
+ defined var    # True if var is defined
+ S matches P    # True if string S matches the glob expression P
+
+ ! tests 
+ tests && tests
+ tests || tests
+ ( tests )
+
+
+For example:
+
+ if ($SLURM_NNODES > 100)
+    MORE_THAN_100_NODES = 1
+ else if ($SLURM_NNODES > 50)
+    MORE_THAN_50_NODES = 1
+ else 
+    FIFTY_NODES_OR_LESS = 1
+ endif
+
+ if ( "$SLURM_ARGV0" matches "*myapp*")
+    include env.myapp
+ endif
+
+
+DEBUGGING
+
+Other commands that are mainly useful for debugging include:
+
+ print "STRING"           Print the value of string to stdout
+ set debuglevel N         Set the debug level for the parser to value N
+ dump keywords            Dump a list of currently defined keywords
+ dump symbols             Dump a list of currently defined local symbols
+ dump all                 Dump both of the above
+
+The use-env plugin also looks for the environment variable:
+
+ SPANK_USE_ENV_DEBUG
+
+which will increase the verbosity of debug logs for the use-env
+parser if non-zero. 
+        
+
+
+EXAMPLES
+
+/etc/slurm/environment/default:
+  # 
+  # Include global defaults
+  include global
+  #
+  # Include environment for mvapich
+  include mvapich
+
+/etc/slurm/environment/global
+  #
+  # If TMPDIR not set, set to /tmp
+  TMPDIR |= /tmp
+  #
+
+/etc/slurm/environment/mvapich
+  #
+  #   Force MVAPICH timeout to 22
+  #
+  VIADEV_DEFAULT_TIME_OUT=22
+  #
+  # Prepend /usr/lib/mpi/dbg/mvapich-gen2/lib/shared to LD_LIBRARY_PATH
+  LD_LIBRARY_PATH += /usr/lib/mpi/dbg/mvapich-gen2/lib/shared
+
+
+~/.slurm/environment/mvapich-test
+  #
+  # environment for testing new versions of MVAPICH
+  #
+  PATH += /home/grondo/mvapich-test/root/lib/shared
+  LD_LIBRARY_PATH += /home/grondo/mvapich-test/root/bin
+
+PATH and LD_LIBRARAY_PATH can then be adjusted to use the mvapich-test
+version with the srun command line:
+
+ srun --use-env=mvapich-test ...
+
+
+Using conditional expressions
+
+~/.slurm/environment/default
+  #
+  # Using different environment variables based on job size
+  #
+
+  define n = $SLURM_NPROCS
+  define N = $SLURM_NNODES
+
+  if ($N > 128 || $n > 1024)
+     include large-env
+  else if (($N > 16) || ($n > 128))
+     include medium-env
+  else 
+     include small-env
+  endif
+
+  if (defined $DEBUG)
+     print "environment setup for $SLURM_JOBID.$SLURM_STEPID complete"
+	 dump keywords
+	 dump symbols
+  endif
+
+
+Output for this config file for a run with DEBUG set might look like:
+
+~ > DEBUG=1 srun hostname
+environment setup for 4862.4 complete
+use-env: default: 18: Dumping keywords
+use-env: default: 18:  SLURM_STEPID = "4"
+use-env: default: 18:  SLURM_JOBID = "4862"
+use-env: default: 18:  SLURM_NPROCS = "16"
+use-env: default: 18:  SLURM_NNODES = "2"
+use-env: default: 19: Dumping symbols
+use-env: default: 19:  N = "2"
+use-env: default: 19:  n = "16"
+

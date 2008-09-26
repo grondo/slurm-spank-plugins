@@ -1,0 +1,378 @@
+.\"  $Id: slurm-cpuset.8 7653 2008-07-29 22:33:31Z grondo $
+
+.TH slurm-cpuset 8 "SLURM cpuset plugin"
+
+.SH NAME
+slurm-cpuset \- confine SLURM jobs to CPUs using cpusets
+
+.SH DESCRIPTION
+The SLURM \fBcpuset\fR suite enables the use of Linux \fBcpuset\fR(4)
+functionality to constrain user jobs and login sessions to the
+number of CPUs allocated on compute nodes. The suite consists of a
+\fBspank\fR(8) plugin, a \fBPAM\fR module, and a cpuset \fIrelease
+agent\fR.  Together, these three components may effectively restrict
+user access to shared nodes based on actual SLURM allocations.
+.PP
+The SLURM cpuset components are specifically designed for
+systems sharing nodes using CPU scheduling (i.e. using SLURM's
+\fIselect/cons_res\fR plugin) These plugins and utilities will not
+be effective on systems where CPUs may be oversubscribed to jobs
+(e.g. strict node sharing without the use of \fIselect/cons_res\fR).
+.PP
+For more details see the OPERATION section below.
+
+.SH SLURM PLUGIN
+The core cpuset functionality for SLURM jobs is provided
+by a SLURM \fBspank\fR(8) plugin \fBcpuset.so\fR. Since this plugin
+uses SLURM's \fBspank\fR(8) framework, it must be enabled
+in the plugstack.conf for the system, via the following
+line
+.nf
+
+   required  cpuset.so [options]
+
+.fi
+where \fIoptions\fR are described further in the \fIOPTIONS\fR
+section below.
+.PP
+The slurm cpuset plugin (as well as other SLURM cpuset components)
+works on a single node. It knows nothing about the global state of
+SLURM, its queues, etc. Local CPUs are allocated dynamically to
+incoming jobs based on the number of CPUs assigned to the job by
+SLURM. The cpuset plugin does not keep any state across jobs, nor
+across the nodes of a job. Instead, it uses past created cpusets
+to track which CPUs are currently in use, and which are available.
+.PP
+The SLURM cpuset plugin may also constrain job steps to their
+own cpusets under the job cpuset. This may be useful when running
+multiple job steps under a single allocation, as the resources of
+each job step may be partitioned into separate, non-overlapping
+cpusets.  This functionality is enabled by the srun user option
+.TP 
+.BI "--use-cpusets="[args...]
+.PP
+Where the optional arguments in \fIargs\fR modify the cpuset plugin
+behavior for job steps and/or tasks. Any plugin option as described
+in the OPTIONS section can be specified.
+
+.SH PAM MODULE
+The \fBpam_slurm_cpuset\fR(8) module may be used to restrict user
+login sessions on compute nodes to only the CPUs which they have
+been allocated by SLURM. If enabled in the PAM stack, it will also
+deny access to users attempting to log in to nodes which they
+have not been allocated.
+.PP
+The \fBpam_slurm_cpuset\fR PAM module
+uses the same configuration file and algorithms as the SLURM cpuset
+plugin, and is further documented in the \fBpam_slurm_cpuset\fR(8)
+man page.
+
+.SH RELEASE AGENT
+Included with the SLURM cpuset utilities is a cpuset release-agent
+which may optionally be installed into /sbin/cpuset_release_agent
+on any nodes using the SLURM cpuset plugin or PAM module. This release
+agent will be run for each SLURM cpuset when the last
+task within the cpuset exits, and will free the cpuset immediately
+(with proper locking so as to not race with other jobs). The release
+agent is optional for a couple reasons:
+.RS 8
+.TP 3
+1. 
+Some versions of Linux may only allow a single \fBcpuset_release_agent\fR
+and we don't want to interfere with other uses of cpusets if they exist.
+.TP
+2. 
+The cpuset plugin and PAM modules remove stale cpusets as they initialize
+anyway. Therefore \fBcpuset_release_agent\fR is not a critical component
+for operation. However, it is nice to clean up job cpusets as jobs exit,
+instaed of waiting until the next job is run. Unused cpusets lying around
+may be confusing to syadmins and users.
+
+.SH CONFIGURATION
+All SLURM cpuset components will first attempt to read the systemwide
+config file at /etc/slurm/slurm-cpuset.conf. This location may be overridden
+in the PAM module and SLURM plugin with the \fBconf=\fR parameter.
+However, this is not suggested, because there is no way currently
+to override the config file location for the cpuset release agent.
+.PP
+Available configuration parameters that may be set in slurm-cpuset.conf
+are:
+.TP 8
+\fBpolicy\fR = \fIPOLICY\fR
+Set the allocation policy for cpusets to \fIPOLICY\fR. Currently
+supported policies include:
+.RS 
+.TP
+.B best-fit
+Allocate tasks to the most full NUMA nodes first. This is the default
+.TP
+.B first-fit
+Allocate tasks to nodes in order of node ID.
+.TP
+.B worst-fit
+Allocate tasks to least full nodes first.
+.RE
+
+.TP
+\fBorder\fR = [\fInormal\fR|\fIreverse\fR]
+Set the allocation order of tasks to CPUs. In \fInormal\fR
+mode, tasks are allocated starting with the first available
+CPU and in increasing order, while with \fRreverse\fR order,
+tasks are allocated starting with the last available CPU. The
+default order is \fInormal\fR.
+.TP
+\fBuse-idle\fR = \fISTRATEGY\fR
+The \fBuse-idle\fR parameter indicates when to allocate tasks
+to fully idle NUMA nodes first. The default behavior is
+to use idle nodes first when the number of tasks is a multiple
+of the number of CPUs within a node. Other options include
+.RS 
+.TP 12
+.B mult[iple]
+The default. Allocate idle nodes first if number of tasks is a
+multiple of the node size.
+.TP
+.B [greater|gt]
+Allocate idle nodes first if the number of tasks is \fBgreater\fR
+than the number of CPUs in a node.
+.TP
+.B [0|no|never]
+Do not allocate idle nodes first, no matter the job size.
+.TP
+.B [1|yes]
+Allocate idle nodes first using the default policy.
+.RE
+.TP
+\fBconstrain-mem\fR = \fIBOOLEAN\fR
+If set to 1 or yes, constrain memory nodes along with CPUs when
+creating cpusets. If set to 0 or no, let all cpusets access all
+memory nodes on the system (i.e. do not constrain memory). The
+default is yes.
+.TP
+\fBkill-orphs\fR = \fIBOOLEAN\fR
+If set to 1 or yes, kill orphaned user logins, i.e. those logins
+for which there are no longer any SLURM jobs running. If 0 or no,
+then leave orphan user logins (in a special orphan login cpuset).
+The default is no.
+
+.SH USER OPTIONS
+
+The \fB--use-cpusets\fR option may be used to override some of
+the options above, in addition to providing a couple of extra options.
+Currently supported arguments for this option include:
+.TP
+.B help
+Print a short usage message to stderr and exit.
+.TP
+.B debug
+Enable debug messages.
+.TP
+.BI "debug=" N
+Increase debugging verbosity to \fIN\fR
+.TP
+.BI "conf=" FILENAME
+Read configuration from file \fIFILENAME\fR. Settings in this
+config file will override system configuration, as well as options
+previously set on the command line.
+.TP
+.BI "policy=" POLICY
+As above, set the allocation policy for cpusets to \fIPOLICY\fR. 
+For the user option, this only overrides the policy as applied to
+job steps and tasks.
+.TP
+.BI "order=" ORDER
+Set allocation order to \fInormal\fR or \fIreverse\fR.
+.TP
+.B reverse
+Same as \fBorder=\fR\fIreverse\fR.
+.TP
+.B best-fit | worst-fit | first-fit
+Shortcut for \fBpolicy\fR=\fIPOLICY\fR.
+.TP
+.BI "idle-first=" WHEN
+As above, set \fIWHEN\fR to allocate idle nodes first. 
+.TP
+.BI "no-idle"
+Same as \fBidle-first\fR=\fIno\fR.
+.TP
+.B mem | constrain-mem
+Constrain memory as well as CPUs. Same as \fBconstrain-mem\fR = \fIyes\fR
+in the config file.
+.TP
+.B nomem | !constrain-mem
+Do not constrain memory.
+.TP
+.B tasks
+Also constrain individual tasks to cpusets.
+
+.SH OPERATION
+All SLURM cpusets for jobs and login sessions are created
+under the /slurm cpuset heirarchy, and require that the
+epuset filesystem be mounted under /dev/cpuset (An init script
+is provided for this purpose.). 
+.PP
+The first level of cpuset
+created under the /slurm directory are UID cpusets. Each
+user with a job or login to the current node will have
+a cpuset under 
+.nf
+
+    \fB/slurm/UID\fR
+
+.fi
+which will contain the set of
+all CPUs that user is allowed to use on the system. Processes
+which are part of a login session are contained within this
+cpuset, and thus have access to all CPUs which the user has
+been allocated.
+.PP
+Under each UID cpuset will be one cpuset per active job.
+These cpusets are named with the JOBID, and thus fall 
+under the path
+.nf
+
+    \fB/slurm/UID/JOBID\fR
+
+.fi
+The CPUs allocated to the JOBID cpusets will obviously
+be a subset of the UID cpuset.
+.PP
+Finally, if the user requests per-job-step or per-task
+cpusets, these cpusets will fall under the JOBID cpuset,
+and will of course be a subset of the job cpuset. Thus,
+the final cpuset path for a task would be:
+.nf
+
+    \fB/slurm/UID/JOBID/STEPID/TASKID\fR
+
+.fi
+where there would be N TASKID cpusets for an N task job.
+.PP
+As cpusets are created by the SLURM cpuset utilities,
+the \fBnotify_on_release\fR flag is set. This causes
+the cpuset release agent at /sbin/cpuset_release_agent
+to be called after the last task exits from the cpuset.
+The SLURM cpuset version of \fBcpuset_release_agent\fR takes
+care of removing the cpuset and releasing CPUs for use
+if necessary. Use of the release agent is optional, however,
+because the SLURM cpuset utilities will also try to 
+free unused cpusets on demand as well.
+.PP
+The general algorithm the SLURM cpuset utilities use for
+allocating a new JOB cpuset is as follows:
+.PP
+.RS 2
+.TP 3
+1.
+Lock SLURM cpuset at /dev/cpuset/slurm.
+.TP
+2.
+Clean up current slurm cpuset heirarchy by removing all unused cpusets,
+and ensuring user cpusets (/slurm/UID) are up to date.
+.TP
+3.
+Check for an existing cpuset for this job in /slurm/UID/JOBID. If
+it exists, goto directly to step 8.
+.TP
+4. 
+Scan the slurm cpuset heirarchy and gather the list of currently
+used CPUs. This is the union of all active user cpusets, which are
+in turn the union of all active user job cpusets.
+.TP
+5. 
+Abort if the number of CPUs assigned to the starting job is greater
+than the number of available CPUs.
+.TP
+6. 
+Assign CPUs and optionally memory nodes based on the currently
+configured policy. (See CONFIGURATION section for valid policies)
+.TP
+7. 
+Create new cpuset under /dev/cpuset/slurm/UID/JOBID, updating
+the user cpuset if necessary with newly allocated cpus.
+.TP
+8. 
+Migrate job to cpuset /dev/cpuset/slurm/UID/JOBID.
+.TP
+9. Unlock SLURM cpuset at /dev/cpuset/slurm.
+.RE
+.PP
+
+.SH EXAMPLES
+Default allocation policy, job sizes 2 cpus, 1 cpu, 1 cpu, 4 cpus:
+.nf
+
+  cpuset: /slurm/6885/69946: 2 cpus [0-1], 1 mem [0]
+  cpuset: /slurm/6885/69947: 1 cpu [2], 1 mem [1]
+  cpuset: /slurm/6885/69948: 1 cpu [3], 1 mem [1]
+  cpuset: /slurm/6885/69950: 4 cpus [4-7], 2 mems [2-3]
+
+.fi
+Same as above with order = reverse.
+.nf
+
+  cpuset: /slurm/6885/69954: 2 cpus [6-7], 1 mem [3]
+  cpuset: /slurm/6885/69955: 1 cpu [5], 1 mem [2]
+  cpuset: /slurm/6885/69956: 1 cpu [4], 1 mem [2]
+  cpuset: /slurm/6885/69957: 4 cpus [0-3], 2 mems [0-1]
+
+.fi
+use-idle = never, policy = worst-fit: job sizes 1, 1, 1, 4, 1
+.nf
+
+  cpuset: /slurm/6885/69976: 1 cpu [0], 1 mem [0]
+  cpuset: /slurm/6885/69977: 1 cpu [2], 1 mem [1]
+  cpuset: /slurm/6885/69978: 1 cpu [4], 1 mem [2]
+  cpuset: /slurm/6885/69979: 4 cpus [1,3,6-7], 3 mems [0-1,3]
+  cpuset: /slurm/6885/69980: 1 cpu [5], 1 mem [2]
+
+.fi
+policy = first-fit: job sizes 1, 1, 1, 4, 1
+Note that 4 cpu job is allocated to idle nodes first.
+.nf
+
+  cpuset: /slurm/6885/69985: 1 cpu [0], 1 mem [0]
+  cpuset: /slurm/6885/69986: 1 cpu [1], 1 mem [0]
+  cpuset: /slurm/6885/69987: 1 cpu [2], 1 mem [1]
+  cpuset: /slurm/6885/69988: 4 cpus [4-7], 2 mems [2-3]
+  cpuset: /slurm/6885/69989: 1 cpu [3], 1 mem [1]
+
+.fi
+Using cpusets for multiple job steps under an allocate of 1 node
+with 8 cpus.
+
+.nf
+
+  > srun --use-cpusets=debug -n1 sleep 100 &
+
+   cpuset: /slurm/6885/69993: 8 cpus [0-7], 4 mems [0-3]
+   cpuset: /slurm/6885/69993/0: 1 cpu [0], 1 mem [0]
+
+  > srun --use-cpusets=debug -n2 sleep 100 &
+
+   cpuset: /slurm/6885/69993: 8 cpus [0-7], 4 mems [0-3]
+   cpuset: /slurm/6885/69993/1: 2 cpus [2-3], 1 mem [1]
+
+.fi
+Use of --use-cpusets=tasks
+
+.nf
+
+ > srun --use-cpusets=debug,tasks -n4 sleep 100
+
+  cpuset: /slurm/6885/69993: 8 cpus [0-7], 4 mems [0-3]
+  cpuset: /slurm/6885/69993/2: 4 cpus [0-3], 2 mems [0-1]
+  cpuset: /slurm/6885/69993/2/0: 1 cpu [0], 1 mem [0]
+  cpuset: /slurm/6885/69993/2/1: 1 cpu [1], 1 mem [0]
+  cpuset: /slurm/6885/69993/2/2: 1 cpu [2], 1 mem [1]
+  cpuset: /slurm/6885/69993/2/3: 1 cpu [3], 1 mem [1]
+.fi
+
+.SH AUTHOR
+Mark Grondona <mgrondona@llnl.gov>
+
+.SH "SEE ALSO"
+.BR use-cpusets (1),
+.BR pam_slurm_cpuset (8),
+.BR spank (8),
+.BR cpuset (4)

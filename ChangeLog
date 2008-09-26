@@ -1,0 +1,516 @@
+2008-09-25 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.34.
+
+	* preserve-env.c :
+	  Added.
+
+	* auto-affinity.c :
+	  Check current CPU mask in task context as well as in
+	  post opt and abort auto-set of affinity if CPU masks
+	  have changed. This probably means something else is 
+	  controlling CPU affinity (or cpusets).
+
+2008-09-11 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.33.
+
+	* cpuset/log.c :
+	  Fix off-by-one use of log level.
+
+	* cpuset/conf-parser.y :
+	  Change message about opening config file from verbose to debug.
+
+	* cpuset/cpuset.c, cpuset/create.c, cpuset/util.c :
+	  Change locking methodology to use global lockfile in /var/lock
+	  instead of using lockfile under /dev/cpuset/slurm. Advisory
+	  locks are dropped if any fd open against a locked file is closed,
+	  not just the original fd. Since libcpuset opens all files under
+	  the /dev/cpuset heirarchy, no file within that fs is usable
+	  as a lockfile for slurm cpuset.
+
+2008-09-10 Mark Grondona <mgrondona@llnl.gov>
+
+	* use-env/use-env.c :
+	  Fix generation of SLURM_CMDLINE. (Was accidentally generated
+	  in reverse order).
+
+2008-08-21 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.32.
+
+	* oom-detect.c :
+	  Add 'do_syslog' parameter, which, when true,
+	  sends a message via syslog(3) when any task of
+	  a job step is thought to have been terminated by
+	  the OOM killer.
+
+2008-08-19 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.31.
+
+	* oom-detect.c :
+	  Delay slightly if an OOM killed task is detected.
+	  This should give srun more time to recv the error
+	  message.
+
+2008-08-04 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.30.
+
+	* cpuset/conf-parser.y, cpuset/cpuset.c :
+	  Improve config file parse errors.
+
+	* auto-affinty.c :
+	  Update --auto-affinity=help.
+
+2008-07-29 Mark Grondona <mgrondona@llnl.gov>
+	
+	* : tag v0.29.
+
+	* auto-affinity.c :
+	  Do not set CPU affinity by default if the number of CPUs
+	  is not a multiple of the number of tasks.
+
+	* lib/hostlist.c, lib/hostlist.h, Makefile:
+	  Include hostlist code, used by cpuset PAM module.
+
+	* cpuset/* : Overhaul cpuset support, including new config file
+	  parser, PAM module, and man pages.
+
+2008-07-22 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.28.
+
+	* auto-affinity.c : 
+	  Only run spank_init_post_opt() hook on remote side (slurmd).
+
+2008-07-16 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.27.
+
+	* cpuset/README :
+	  Document `tasks' option to --use-cpusets.
+
+	* cpuset/cpuset.c, cpuset/util.c  :
+	  Add --use-cpusets=tasks support to constrain tasks to
+	  their own cpusets under the job step cpuset. 
+
+2008-07-16 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.26
+
+	* cpuset/README :
+	  Add documentation for --use-cpusets option.
+
+	* cpuset/cpuset.c, cpuset/util.h, cpuset/util.c,
+	  cpuset/nodemap.c, cpuset/Makefile :
+	  Add spank user option --use-cpusets to optionally allow
+	  per-job-step cpusets, which are created under the overall
+	  job cpuset.
+
+	* auto-affinity.so : 
+	  Move check for cpuset to after user options have been 
+	  processed, in case cpuset was changed. Open cpuset related
+	  proc files with O_RDONLY instead of O_RDWR.
+
+2008-07-10 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.25.
+
+	* chaos-spankings.spec :
+	  Add cpuset subpackage for SLURM cpuset plugin,
+	  /etc/init.d/slurm-cpuset init script, and 
+	  /sbin/cpuset_release_agent binary.
+
+	* cpsuet/cpuset.init :
+	  Add initscript to mount /dev/cpuset.
+
+	* cpuset/nodemap.c :
+	  Allocate CPUs from nodes in reverse for best-fit and
+	  worst-fit, but in order for first-fit.
+
+	* cpuset/cpuset.c :
+	  Be sure to call slurm_cpuset_create() early in plugin,
+	  before slurm_cpuset_lock().
+
+	* auto-affinity.c : 
+	  Fix bug in auto-affinity plugin when cpuset filesystem
+	  is not mounted.
+
+	* cpuset/README :
+	  Added.
+
+2008-07-09 Mark Grondona <mgrondona@llnl.gov>
+
+	* cpuset.c, util.c, util.h :
+	  Add !mem or !mem-constrain option to disable constraint
+	  of memory nodes. Change "idle-first" options to 
+	  !idle-1st, idle-1st=gt, idle-1st=mult, idle-1st=no.
+
+	* Makefile :
+	  Add cpuset to subdirs.
+
+	* cpuset/Makefile, cpuset/util.h, cpuset/util.c,
+	  cpuset/nodemap.h, cpuset/nodemap.c, cpuset/cpsuet.c,
+	  cpuset/test.c, cpuset/release-agent.c :
+	  Add initial version of SLURM cpuset.so module.
+
+	* Makefile : 
+	  Add dependence on lib/fd.o to auto-affinity.so.
+
+	* auto-affinity.c : 
+	  Allow auto-affinity to work when running inside a cpuset.
+	  Map CPUs as chosen for CPU affinity back to actual CPUs
+	  available to tasks inside their cpuset. (Plugin should
+	  work the same as before, except that the number of available
+	  CPUs is adjusted to the number of CPUs in the cpuset).
+
+2008-06-10 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.24.
+
+	* Makefile :
+	  auto-affinity.so now needs to link against libslurm.
+
+	* auto-affinity.c :
+	  If SLURM_JOB_CPUS_PER_NODE is not set, fall back to querying
+	  slurm controller for necessary information. This is only
+	  used in exclusive_only mode, and is a temporary solution
+	  until the env var above is set for all SLURM jobs.
+
+2008-06-10 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.23.
+
+	* auto-affinity.c : 
+	  Change `exclusive' option to `exclusive_only'.
+
+2008-06-09 Mark Grondona <mgrondona@llnl.gov>
+
+	* auto-affinity.c : 
+	  Add `exclusive' option to auto-affinity plugin, which, when
+	  used, will disable auto-affinity when the running job does
+	  not have exclusive access to the node.
+
+2008-05-15 Mark Grondona <mgrondona@llnl.gov>
+
+	* addr-no-randomize.c : 
+	  Added plugin to set ADDR_NO_RANOMIZE personality on 
+	  processes, thus disabling address space randomization.
+	
+2007-08-13 Jim Garlick <garlick@llnl.gov>
+
+	* iorelay/* : New.
+
+2007-07-27 Mark Grondona <mgrondona@llnl.gov>
+
+	* pty.c : 
+	  Add ability to process window size changes.
+
+	* : tag v0.20.
+
+	* pty.c : Instead of closing stdin/out/err, dup onto /dev/null.
+	  Allow SLURM_PTY_NO_CLOSE_STDIO env variable to disable close
+	  of stdio in tasks != task0.
+
+	* overcommit-memory/overcommit.c (unregister_job) : 
+	  Fix bug that caused improper cleanup when runnin against all steps
+	  for a given jobid, i.e. stepid = -1.
+
+	* overcommit-memory/overcommit.c, overcommit-memory/util.c :
+	  Properly report failed job cleanup.
+
+	* : tag v0.21.
+
+2007-07-27 Mark Grondona <mgrondona@llnl.gov>
+
+	* pty.c :
+	  Added. New --pty option to srun(1) runs task 0 under a pseudo-tty.
+	
+	* Makefile, chaos-spankings.spec :
+	  Build and package pty.so.
+
+2007-07-03 Mark Grondona <mgrondona@llnl.gov>
+
+	* chaos-spankings.spec : 
+	  Include proper BuildRequires.
+
+	* : tag v0.19.
+
+2007-02-12 Mark Grondona <mgrondona@llnl.gov>
+
+	* auto-affinity.c : Don't ignore 1 task/node if CPUs/task is set.
+
+	* overcommit-memory/overcommit-memory.c, 
+	  overcommit-memory/overcommit.c, overcommit-memory/overcommit.h :
+	  Also adjust overcommmit_ratio when overcommit-memory plugin is 
+	  used (mainly for the "no overcommit" case). Reset original 
+	  value when the last user exits.
+
+	* : tag v0.18.
+
+2007-02-02 Mark Grondona <mgrondona@llnl.gov>
+	
+	* : tag v0.17. 
+
+2007-02-02 Mark Grondona <mgrondona@llnl.gov>
+
+	* overcommit-memory.c, overcommit-memory/overcommit-memory.c
+	  overcommit-memory/overcommit.h, overcommit-memory/overcommit.c,
+	  overcommit-memory/util.c, lib/fd.c, lib/fd.h  : 
+	  Move overcommit-memory source into its own dir. 
+	  Plugin now uses a shared memory file to track current users
+	  and restores default overcommit policy when the last user
+	  exits. Supply a utility, overcommit-util, to clean up state
+	  of shared memory file, query current users, etc.
+
+	* chaos-spankings.spec : 
+	  Updates for changes in overcommit-memory plugin.
+
+2007-02-02 Mark Grondona <mgrondona@llnl.gov>
+
+	* auto-affinity.c : Force enable auto-affinity if any user option is
+	  passed to --auto-affinity (except "off" of course).
+
+	* auto-affinity.c : Rename "last_cpu_first" to "reverse." 
+	  Add start=N option to begin CPU affinity at CPU [N] instead
+	  of CPU 0. Add shorthands "v" for verbose, "rev" for reverse.
+
+2007-01-24 Mark Grondona <mgrondona@llnl.gov>
+
+	* auto-affinity.c : 
+	  Added. Set up some sane CPU affinity defaults.
+
+	* use-env/use-env-parser.l : 
+	  Expand `~' to $HOME in POSTOP and STRING conditions.
+
+	* : tag v0.16.
+
+2007-01-19 Mark Grondona <mgrondona@llnl.gov>
+
+	* use-env/use-env-parser.y : 
+	  Be sure to not evaluate "matches" keyword when the condition
+	  state is not true.
+
+	* use-env/use-env.c :
+	  Do not report errors from spank_setenv() when overwrite == 0.
+
+	* overcommit-memory.c :
+	  Added. Allow users to change overcommit behavior on nodes 
+	  of their job.  
+
+	* : tag v0.15.
+
+2007-01-10 Mark Grondona <mgrondona@llnl.gov>
+
+	* io-watchdog/* : 
+	  Remove io-watchdog code. It is now its own project.
+
+	* use-env/use-env-parser.l, use-env/use-env-parser.y,
+	  README.use-env:
+	  Change fnmatch() function to ``STRING matches PATTERN''
+	  
+	* : tag v0.13.
+
+	* use-env/use-env-parser.y :
+	  Allow empty input file.
+
+	* : tag v0.14.
+
+2006-12-29 Mark Grondona <mgrondona@llnl.gov>
+
+	* io-watchdog/io-watchdog-interposer.c : 
+	  Glob for proper libc using pattern /lib{64,}/libc.so* instead
+	  of explicitly specifying libc filenames.
+
+	* io-watchdog/io-watchdog-interposer.c : 
+	  Intercept calls to glibc IO functions _IO_putc and IO_puts.
+
+	* io-watchdog/io-watchdog-interposer.c : 
+	  Set ctx.progname even if IO_WATCHDOG_TARGET not set.
+
+2006-12-28 Mark Grondona <mgrondona@llnl.gov>
+
+	* io-watchdog/io-watchdog-interposer.c :
+	  Also check for libc.so.6.1 if libc.so.6 is not found.
+
+	* use-env/use-env-parser.y, use-env/use-env-parser.l, 
+	  use-env/use-env.c :
+	  Add fnmatch() "function" to use-env config file.
+	  Additional comments in use-env.c.
+
+2006-12-27 Mark Grondona <mgrondona@llnl.gov>
+
+	* use-env/use-env.c : 
+	  Replace slurm_spank_local_user_init() which was inadvertently
+	  removed earlier.
+
+	* use-env/use-env.c :
+	  Set SLURM_CMDLINE and SLURM_ARGV*/SLURM_ARGC keywords for
+	  use in use-env config files.
+
+	* README.use-env : Update documentation.
+
+2006-12-26 Mark Grondona <mgrondona@llnl.gov>
+
+	* use-env/use-env.c, use-env/user-env.h	, 
+	  use-env/use-env-parser.y, use-env/use-env-parser.l,
+	  use-env/main.c, use-env/test.conf :
+	  Add support for "in task" blocks in use-env config files
+	  that are only parsed from spank_task_init. Provide wrappers
+	  for {get,set,unset}env to access job environment in remote
+	  context. 
+
+2006-12-21 Mark Grondona <mgrondona@llnl.gov>
+
+	* io-watchdog/io-watchdog-interposer.c :
+	  Undefine fwrite_unlocked if it is a #define. Fix for compile
+	  problem.
+
+	* : tag v0.12.
+
+2006-12-20 Mark Grondona <mgrondona@llnl.gov>
+
+	* lib/split.c, lib/split.h, lib/list.c, lib/list.h :
+	  Move src files that may be used by multiple plugins into 
+	  a lib dir.
+
+	* use-env/split.c, use-env/split.h, 
+	  use-env/list.c, use-env/list.h : 
+	  Removed.
+
+	* use-env/Makefile : 
+	  Use sources from ../lib/.
+
+	* Makefile, chaos-spankings.spec : 
+	  Better use of subdirectories.
+
+	* chaos-spankings.spec : 
+	  Package tmpdir.so.
+
+	* Makefile, io-watchdog/* : 
+	  Initial support for io-watchdog plugin.
+
+2006-12-13 Mark Grondona <mgrondona@llnl.gov>
+
+	* tmpdir.c, Makefile : Add toy module that creates and 
+	  destroys job-step specific TMPDIR.
+
+2006-11-30 Mark Grondona <mgrondona@llnl.gov>
+
+	* use-env/use-env.c : Only run cleanup in local context,
+	  i.e. when !spank_remote().
+
+	* : tag v0.11.
+
+2006-11-28 Mark Grondona <mgrondona@llnl.gov>
+
+	* use-env : 
+	  Moved use-env plugin into its own directory.
+	  Complete redesign of use-env parser implemented with lex & yacc. 
+	  - Support for double-quoted strings.
+	  - Added support for conditional if/else if/else/endif blocks.
+	  - Added support for expansion of symbols with $ID and ${ID}
+	    constructs. Symbols are use-env keywords, locally defined
+		symbols, or environment variables (searched in that order).
+	  - Added support for keywords SLURM_NNODES, SLURM_NPROCS, SLURM_JOBID,
+	    SLURM_STEPID for testing attributes of the current job.
+	  - New "set" command for setting parser options (currently only
+	    debuglevel is supported)
+	  - New "dump" command to dump either the current list of "symbols"
+	    "keywords" or both ("all").
+	  - New "print" command for printing arbitrary strings to stdout.
+	  - New "define" command for defining symbols not exported to
+	    the environment and "undefine" for deleting local symbols.
+	  - See README.use-env for more information.
+
+	* : tag v0.10.
+	  
+2006-11-15 Mark Grondona <mgrondona@llnl.gov>
+
+	* use-env.c, env-override.c : 
+	  - Prefer files in /etc/slurm/environment/name instead 
+	    of /etc/slurm/env-name.conf (same for ~/.slurm/)
+	  - Always read both system and user "default" file. Apply
+	    user defaults after system defaults so user can override
+	    system settings.
+	  - User default file is always called "default"
+	  - Allow a list of names to be specified to --use-env, e.g.
+	    --use-env=mvapich,test. The settings are applied in order
+	    i.e. test after mvapich.
+
+	* use-env.c : 
+	  - Check for slurm_spank_local_user_init support from SPANK,
+	    and if it exists, read environment overrides in that 
+	    callback instead of in spank_init and option processing hooks.
+
+	 * list.c, list.h, split.c, split.h : Added.
+
+	 * README.use-env : Updated documentation for --use-env.
+
+	 * : tag v0.9.
+
+2006-11-11 Mark Grondona <mgrondona@llnl.gov>
+
+	* use-env.c, env-override.c : 
+	  - Fix environment variable value overwrite.
+	  - Allow config files to be included from other files with
+	    the "include" directive. 
+	  - Add "unset" directive for unsetting
+	  - Improve environment override file parsing a bit.
+
+	* README.use-env, chaos-spankings.spec : 
+	  Add and install README for the use-env plugin.
+
+	* : tag v0.8.
+
+2006-11-09 Mark Grondona <mgrondona@llnl.gov>
+
+	* Makefile, use-env.c, env-override.c, env-override.h, 
+	  strlcpy.c, strlcpy.h, list.c, list.h, chaos-spankings.spec :
+	  Add --use-env capability for overriding environment variables
+	  in srun before sending environment to the remote job.
+
+	* : tag v0.7.
+
+2006-10-18 Jim Garlick <garlick@llnl.gov>
+
+	* iotrace.c : Added ability to pass flags to plasticfs log module.
+	  Remove extraneous code. 
+
+	* : tag v0.6.
+
+2006-10-17 Jim Garlick <garlick@llnl.gov>
+
+	* iotrace.c : New --iotrace capability using plasticfs via LD_PRELOAD.
+	  Derived from Mark's system-safe.c.
+
+	* chaos-spankings.spec, Makefile : Add iotrace.
+
+	* : tag v0.5.
+
+2006-10-09 Mark Grondona <mgrondona@llnl.gov>
+
+	* system-safe.c, system-safe-preload.c : Add srun option to place
+	  system-safe-preload.so in job's LD_PRELOAD, which replaces
+	  system(3) with a version that calls fork(2) before application's
+	  main(), thus allowing MPI applications to use system(3) on MPI
+	  implementations that might not be fork()-safe.
+
+	* oom-detect.c : Fix "(null)" at end of error message.
+
+	* : tag v0.3.
+
+	* system-safe-preload.c : Fix some stray fprintf's.
+
+	* : tag v0.4.
+
+2006-07-25 Mark Grondona <mgrondona@llnl.gov>
+	
+	* renice.c : Fix format for verbose message.
+
+	* oom-detect.c : Fix formatting of error message.
+
+2006-07-21 Mark Grondona <mgrondona@llnl.gov>
+	* : Initial version.

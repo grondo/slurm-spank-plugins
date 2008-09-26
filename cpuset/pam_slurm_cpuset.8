@@ -1,0 +1,81 @@
+
+.TH "PAM_SLURM_CPUSET" "8"
+
+.SH NAME
+pam_slurm_cpuset \- restrict user logins to SLURM cpusets
+
+.SH SYNOPSIS
+\fBpam_slurm_cpuset.so\fR [\fIOPTIONS\fR]...
+
+.SH DESCRIPTION
+.PP
+The \fBpam_slurm_cpuset\fR module may be used to restrict user
+login sessions on compute nodes to only the CPUs which they have
+been allocated by SLURM. It will also deny access to users attempting 
+to log in to nodes which they have not been allocated. Thus, it
+should replace \fBpam_slurm.so\fR in the PAM stack.
+.PP
+Like the \fBpam_slurm\fR module, the \fBpam_slurm_cpuset.so\fR module
+should be enabled in the account section of the PAM stack. 
+.PP
+User login session tasks are placed into the \fBuser\fR cpuset created
+by the \fBslurm-cpuset\fR(8) utilities. If a \fBuser\fR cpuset doesn't
+exist at the time of operation of this module, and the user has one
+or more valid SLURM jobs assigned to the current system, then a user
+cpuset under
+
+.B    /dev/cpuset/slurm/UID
+
+will be created with access to all CPUs to which the user has access.
+.PP
+As jobs begin and are terminated on the node, the set of CPUs in the
+user cpuset is automatically adjusted to the union of all job cpusets. 
+If and when all the user's jobs on the node are complete, and the
+user has no CPUs allocated to them, SLURM with either \fBorphan\fR
+the user cpuset by renaming it to
+
+.B   /dev/cpuset/slurm/orphan:UID
+
+or will immediately terminate the user login and clean up the
+user cpuset. The method used depends on the \fBkill-orphs\fR
+setting in \fBslurm-cpuset.conf\fR.
+.PP
+For more information about the SLURM cpuset suite and its
+operation, see the \fBslurm-cpuset\fR(8) man page.
+
+.SH OPTIONS
+.TP
+.BI debug [=level]
+Enable verbose module logging via \fBpam_syslog\fR(3). Optionally
+a \fIlevel\fR may be specified.
+.TP
+.BI conf= FILENAME
+Read configuration from config file \fIFILENAME\fR. By default, the
+configuration is read from /etc/slurm/slurm-cpuset.conf.
+.PP
+For valid configuration file syntax and options, see the
+\fBslurm-cpuset\fR(8) man page.
+
+.SH "MODULE SERVICES PROVIDED"
+.PP
+Currently, on the \fBaccount\fR service is supported.
+
+.SH "RETURN VALUES"
+.TP 3n
+PAM_SUCCESS
+Access was granted.
+.TP
+PAM_PERM_DENIED
+Access was not granted.
+.TP
+PAM_USER_UNKNOWN
+Failed to read \fBPAM_USER\fR or user not in passwd file.
+.TP
+PAM_SYSTEM_ERR
+System or module configuration error.
+
+.SH "SEE ALSO"
+.BR slurm-cpuset (8),
+.BR cpuset (4),
+.BR pam (8),
+.BR pam.d (8)

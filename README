@@ -1,0 +1,156 @@
+SLURM spank plugins README
+==================================
+
+This package includes several SLURM spank plugins developed
+at LLNL and used on production compute clusters onsite. A few
+of these plugins are only valid when used on LLNL's software
+stack (oom-detect.so, for example, requires LLNL-specific patches
+to track job's terminated by the OOM killer). However, the 
+source for all plugins is provided here in the hope that they
+might be useful to other plugin developers. The following
+is a short description of most of the plugins in this package.
+
+addr-no-randomize
+-----------------
+
+The addr-no-randomize plugin allows sysadmins to set a default
+policy for address space randomization (when supported and
+enabled in the Linux kernel), and provides an option for users
+to enable/disable randomization on a per-job basis.
+
+auto-affinity 
+-----------------
+
+Automatically assign CPU affinity using best-guess defaults.
+
+The default behavior of this plugin attempts to accomodate
+multi-threaded apps by assigning more than one CPU per task
+if the number of tasks running on the node is evenly divisible
+into the number of CPUs. Otherwise, CPU affinity is not enabled
+unless the cpus_per_task (cpt) option is specified. The default
+behavior may be modified using the --auto-affinity options
+listed below. Also, the srun(1) --cpu_bind option is processed
+after auto-affinity, and thus may be used to override any CPU
+affinity settings from this module.
+
+This plugin should not be used alone on systems using node
+sharing. In that case, it should be used along with
+the cpuset plugin below (and auto-affinity.so should be listed
+*after* cpuset.so in the plugstack.conf).
+
+cpuset
+-----------------
+
+The cpuset plugin uses Linux cpusets to constrain jobs to the
+number of CPUs they have been allocated on nodes. The plugin
+is specifically designed for sytems sharing nodes and using CPU
+scheduling (i.e. using the select/cons_res plugin). The plugin
+will not work on systems where CPUs are oversubscribed to jobs
+(i.e.  strict node sharing without the use of select/cons_res).
+
+The plugin also has a pam_slurm_cpuset counterpart, which
+replaces pam_slurm and serves an identical functionality,
+except that user login sessions are constrained to their
+currently allocated CPUs on a node.
+
+The cpuset plugin requires the SGI libbitmask and libcpuset
+libraries available from
+
+ http://oss.sgi.com/projects/cpusets
+
+(See also cpuset/README)
+
+iorelay
+-----------------
+
+The iorelay plugin is an experimental proof-of-concept plugin
+for remounting required filesystems for a parallel job from
+the first allocated node to all others. It is meant to reduce
+the load on global NFS servers.
+
+It has not been used in production.
+
+
+iotrace
+-----------------
+
+The iotrace plugin is another experimental plugin which
+uses "plasticfs" to log filesystem access on a per-job
+basis. 
+
+
+oom-detect
+-----------------
+
+The oom-detect plugin detects jobs that have been victims
+of the OOM killer using some special code added to the LLNL
+Linux kernel. As tasks exit after having been killed by
+the OOM killer, a message is printed to the user's stderr
+along with some memory information about the task.
+
+overcommit-memory 
+-----------------
+
+The overcommit-memory plugin is an attempt to allow users
+to tune global overcommit behavior of the Linux kernel on
+a per-job basis. It is currently buggy and thus not used.
+
+preserve-env
+-----------------
+
+The preserve-env plugin adds an srun option
+
+ --preserve-slurm-env
+
+which attempts to preserve the current state of all SLURM_*
+environment variables in the remotely executed environment. This
+is meant solely to be used from an allocation shell with
+the syntax
+
+ srun -n1 -N1 --pty --preserve-slurm-env $SHELL
+
+as a sort of "remote" allocation shell.
+
+pty
+-----------------
+
+The pty plugin provides the SLURM --pty option, introduced
+in slurm-1.3, for slurm-1.2. It isn't fully functional at this
+point, but is a good example of a complex feature added solely
+from a spank plugin.
+
+
+renice
+-----------------
+
+The renice plugin is the same as the example code in the
+spank(8) man page. It provides a new srun option "--renice=VALUE"
+which allows users to set the nice value of their remote
+tasks (down to a minimum value configured by sysadmin).
+
+system-safe
+------------------
+
+The system-safe plugin provides an MPI-safe system(3)
+replacement through an LD_PRELOAD library (most of the work
+is done in system-safe-preload.c). The preloaded library
+interposes a version of system(3) that does not fork. Instead,
+the command line is passed through a pipe to a copy of the
+program which was pre-forked before MPI_Init(). The return
+value of the real system() call is passed back through the
+pipe and returned to the calling application, for which there
+is no noticable difference with the real system(3).
+
+use-env
+------------------
+
+The use-env plugin allows system administrators and users to
+modify the environment of SLURM jobs using a set of simple
+yet very flexible config files. Environment variables can
+be overridden, set only if unset, set based on conditional
+syntax, and even defined in a per-task context. The config
+files have access to key slurm variables such as SLURM_NNODES,
+SLURM_NPROCS, etc., so variables can even be defined differently
+depending of the size of the job.
+
+See README.use-env for further information.

@@ -1,0 +1,114 @@
+.TH use-cpusets 1 "user options for SLURM cpuset plugin"
+
+.SH NAME
+use-cpusets \- user options for SLURM cpuset plugin
+
+.SH SYNOPSIS
+\fB--use-cpusets=\fR[\fIargs\fR]...
+
+.SH DESCRIPTION
+The \fB--use-cpusets\fR option is added to \fBsrun\fR(1)
+by the SLURM cpuset plugin, which is described fully
+in the \fBslurm-cpuset\fR(8) manpage. This option allows
+users to request that job steps and optionally individual
+tasks be contained within cpusets under a SLURM job cpuset.
+This may be useful when running multiple job steps under
+an allocation, as the resources of each job step may be
+partitioned into separate cpus and/or memory nodes.
+
+.SH OPTIONS
+The \fB--use-cpusets\fR option may be used to override some of
+the SLURM cpuset defaults and system configuration. Additionally,
+some extra options are provided.
+.PP
+Used alone, the \fB--use-cpusets\fR option enables per-job-step
+cpusets for the spawned tasks. Options that change policies
+and behavior of the SLURM cpuset plugin may specified with an
+optional list of comma-separated arguments to the \fB--use-cpusets\fR
+option, e.g.
+
+.BI "--use-cpusets=" debug,tasks
+
+.PP
+Currently supported arguments for this option include:
+.TP
+.B help
+Print a short usage message to stderr and exit.
+.TP
+.B debug
+Enable debug messages.
+.TP
+.BI "debug=" N
+Increase debugging verbosity to \fIN\fR
+.TP
+.BI "conf=" FILENAME
+Read configuration from file \fIFILENAME\fR. Settings in this
+config file will override system configuration, as well as options
+previously set on the command line.
+.TP
+.BI "policy=" POLICY
+As above, set the allocation policy for cpusets to \fIPOLICY\fR.
+For the user option, this only overrides the policy as applied to
+job steps and tasks.
+.TP
+.BI "order=" ORDER
+Set allocation order to \fInormal\fR or \fIreverse\fR.
+.TP
+.B reverse
+Same as \fBorder=\fR\fIreverse\fR.
+.TP
+.B best-fit | worst-fit | first-fit
+Shortcut for \fBpolicy\fR=\fIPOLICY\fR.
+.TP
+.BI "idle-first=" WHEN
+As above, set \fIWHEN\fR to allocate idle nodes first.
+.TP
+.BI "no-idle"
+Same as \fBidle-first\fR=\fIno\fR.
+.TP
+.B mem | constrain-mem
+Constrain memory as well as CPUs. Same as \fBconstrain-mem\fR = \fIyes\fR
+in the config file.
+.TP
+.B nomem | !constrain-mem
+Do not constrain memory.
+.TP
+.B tasks
+Also constrain individual tasks to cpusets.
+
+.SH EXAMPLES
+Using cpusets for multiple job steps under an allocate of 1 node
+with 8 cpus.
+
+.nf
+
+  > srun --use-cpusets=debug -n1 sleep 100 &
+
+   cpuset: /slurm/6885/69993: 8 cpus [0-7], 4 mems [0-3]
+   cpuset: /slurm/6885/69993/0: 1 cpu [0], 1 mem [0]
+
+  > srun --use-cpusets=debug -n2 sleep 100 &
+
+   cpuset: /slurm/6885/69993: 8 cpus [0-7], 4 mems [0-3]
+   cpuset: /slurm/6885/69993/1: 2 cpus [2-3], 1 mem [1]
+
+.fi
+Use of --use-cpusets=tasks
+
+.nf
+
+ > srun --use-cpusets=debug,tasks -n4 sleep 100
+
+  cpuset: /slurm/6885/69993: 8 cpus [0-7], 4 mems [0-3]
+  cpuset: /slurm/6885/69993/2: 4 cpus [0-3], 2 mems [0-1]
+  cpuset: /slurm/6885/69993/2/0: 1 cpu [0], 1 mem [0]
+  cpuset: /slurm/6885/69993/2/1: 1 cpu [1], 1 mem [0]
+  cpuset: /slurm/6885/69993/2/2: 1 cpu [2], 1 mem [1]
+  cpuset: /slurm/6885/69993/2/3: 1 cpu [3], 1 mem [1]
+.fi
+.SH AUTHOR
+Mark Grondona <mgrondona@llnl.gov>
+
+.SH "SEE ALSO"
+.BR slurm-cpuset (8),
+.BR cpuset (4)
