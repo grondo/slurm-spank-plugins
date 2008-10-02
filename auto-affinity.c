@@ -540,7 +540,8 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
                 "auto-affinity", localid, cpuset_to_cstr (setp, buf));
 
     if (sched_setaffinity (getpid (), sizeof (*setp), setp) < 0) {
-        slurm_error ("Failed to set auto-affinity for task %d\n", localid);
+        slurm_error ("Failed to set auto-affinity for task %d: %s\n",
+                localid, strerror (errno));
         return (-1);
     }
 
