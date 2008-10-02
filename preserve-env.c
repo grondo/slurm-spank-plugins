@@ -60,16 +60,29 @@ SPANK_PLUGIN (preserve-env, 1)
  ****************************************************************************/
 static unsigned int enabled = 0;
 
+static int preserve_slurm_env (void);
+
 static int preserve_opt_process (int val, const char *optarg, int remote)
 {
     enabled = 1;
+
+    /* 
+     *  If in srun, preserve all SLURM_* env vars as soon as possible
+     *   before srun starts redefining them. NNODES in particular is
+     *   redefined quite early on.
+     */
+    if (!remote)
+        preserve_slurm_env ();
+
     return (0);
 }
 
 struct spank_option spank_options [] = 
 {
     { "preserve-slurm-env", NULL,
-      "Preserve all current SLURM_ env vars in remote session",
+      "Preserve all current SLURM env vars in remote task(s). "
+      "Useful with \"salloc [opts] srun --pty -n1 -N1 $SHELL\" "
+      "so that remote environment mirrors salloc's environment",
       0, 0, (spank_opt_cb_f) preserve_opt_process
     },
     SPANK_OPTIONS_TABLE_END
@@ -135,13 +148,18 @@ static int preserve_slurm_var (const char *entry)
 
 extern char **environ;
 
-int slurm_spank_local_user_init (spank_t sp, int ac, char **av)
+static int preserve_slurm_env (void)
 {
     char **p = environ;
+    char *entry;
+    List l;
 
-    if (!enabled)
-        return (0);
-
+    /*
+     *  Be careful to iterate through environment variables
+     *   first before setting any new ones so that char **environ
+     *   doesn't get reset out from under us.
+     */
+    l = list_create (NULL);
     while (*p != NULL) {
         /*
          *   Preserve SLURM environment variables
@@ -150,11 +168,18 @@ int slurm_spank_local_user_init (spank_t sp, int ac, char **av)
         if (strncmp (*p, "SLURM_", 6) == 0 &&
             strncmp (*p, "SLURM_RLIMIT", 12) != 0 &&
             strncmp (*p, "SLURM_UMASK", 11) != 0 &&
-            strncmp (*p, "SLURM_PRIO", 10) != 0 &&
-            preserve_slurm_var (*p) < 0)
-            return (-1);
+            strncmp (*p, "SLURM_PRIO", 10) != 0)
+            list_push (l, strdup (*p));
         ++p;
     }
+
+    while ((entry = list_pop (l))) {
+        if (preserve_slurm_var (entry) < 0)
+            return (-1);
+        free (entry);
+    }
+
+    list_destroy (l);
 
     return (0);
 }
