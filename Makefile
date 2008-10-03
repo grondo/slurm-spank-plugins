@@ -1,18 +1,41 @@
+PACKAGE    ?= slurm-spank-plugins
 
-CFLAGS = -Wall -ggdb
+LIBNAME    ?= lib$(shell uname -m | grep -q x86_64 && echo 64)
+LIBDIR     ?= /usr/$(LIBNAME)
+BINDIR     ?= /usr/bin
+SBINDIR    ?= /sbin
+LIBEXECDIR ?= /usr/libexec
 
-all: renice.so \
-     oom-detect.so \
-     system-safe-preload.so system-safe.so \
-     iotrace.so \
-     tmpdir.so \
-     auto-affinity.so \
-     pty.so \
-     addr-no-randomize.so \
-     preserve-env.so \
-     subdirs
+export LIBNAME LIBDIR BINDIR SBINDIR LIBEXECDIR PACKAGE
 
-SUBDIRS = use-env overcommit-memory cpuset
+CFLAGS   = -Wall -ggdb
+
+PLUGINS = \
+   renice.so \
+   system-safe.so \
+   iotrace.so \
+   tmpdir.so \
+   auto-affinity.so \
+   pty.so \
+   addr-no-randomize.so \
+   preserve-env.so
+
+LIBRARIES = \
+   system-safe-preload.so \
+
+ifeq ($(BUILD_LLNL_ONLY), 1)
+   PLUGINS += oom-detect.so
+endif
+
+SUBDIRS = \
+    use-env \
+    overcommit-memory
+
+ifeq ($(BUILD_CPUSET), 1)
+  SUBDIRS += cpuset	
+endif
+
+all: $(PLUGINS) $(LIBRARIES) subdirs
 
 .SUFFIXES: .c .o .so
 
@@ -38,6 +61,20 @@ pty.so : pty.o
 
 clean: subdirs-clean
 	rm -f *.so *.o lib/*.o
+
+install:
+	@mkdir -p --mode=0755 $(DESTDIR)$(LIBDIR)/slurm
+	@for p in $(PLUGINS); do \
+	   echo "Installing $$p in $(LIBDIR)/slurm"; \
+	   install -m0755 $$p $(DESTDIR)$(LIBDIR)/slurm; \
+	 done
+	@for f in $(LIBRARIES); do \
+	   echo "Installing $$f in $(LIBDIR)"; \
+	   install -m0755 $$f $(DESTDIR)$(LIBDIR); \
+	 done
+	@for d in $(SUBDIRS); do \
+	   make -C $$d DESTDIR=$(DESTDIR) install; \
+	 done
 
 subdirs-clean:
 	@for d in $(SUBDIRS); do make -C $$d clean; done

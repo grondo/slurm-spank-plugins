@@ -1,3 +1,21 @@
+2008-10-03 Mark Grondona <mgrondona@llnl.gov>
+
+	* chaos-spankings.spec :
+	  Removed.
+
+	* slurm-spank-plugins.spec :
+	  New spec file for slurm-spank-plugins RPM. 
+
+	* META :
+	  Rename project to slurm-spank-plugins.
+
+	* Makefile, cpuset/Makefile, 
+	  overcommit-memory/Makefile, 
+	  use-env/Makefile :
+	  Update to build system to not build cpuset and oom-detect
+	  plugins by default, and to support "make install" target.
+
+
 2008-09-25 Mark Grondona <mgrondona@llnl.gov>
 
 	* : tag v0.34.
