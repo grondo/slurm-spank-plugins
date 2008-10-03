@@ -1,5 +1,11 @@
 2008-10-03 Mark Grondona <mgrondona@llnl.gov>
 
+	* : tag v0.1.
+
+	* NEWS, NEWS.old :
+	  Move NEWS for old project to NEWS.old.
+	  Update NEWS for slurm-spank-plugins-0.1.
+
 	* chaos-spankings.spec :
 	  Removed.
 

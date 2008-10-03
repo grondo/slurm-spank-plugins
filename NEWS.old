@@ -1,0 +1,73 @@
+Version 0.34 (2008-09-25):
+- auto-affinity: Fix for using auto-affinity module with jobs using
+   --use-cpusets=task. The auto-affinity module now checks to make sure
+   CPU mask has not changed in task context, and if so, silently
+   does nothing.
+- preserve-env: New plugin which, when enabled with --preserve-slurm-env
+   option, will attempt to keep the remote SLURM_* environment variables
+   the same as in the current context. Useful for invoking 
+   "srun -n1 --pty bash" from within an allocation shell.
+
+Version 0.33 (2008-09-11):
+- Fix for critical locking bug in cpuset plugin. The cpuset plugin
+   now uses a global lockfile in /var/lock instead of locking files
+   under /dev/cpuset. 
+- Fix for generation of SLURM_CMDLINE in use-env plugin.
+
+Version 0.32 (2008-08-21):
+- oom-detect: Optionally log OOM killed jobs via syslog(3), if
+   the do_syslog parameter is used in plugstack.conf. The syslog
+   message has the form "slurmd: OOM detected: jobid=JOBID uid=UID"
+
+Version 0.31 (2008-08-19):
+- oom-detect: Delay slightly if an OOM killed process is detected
+   to give the error message time to make it to srun stderr.
+
+Version 0.30 (2008-08-04):
+- cpuset: Slightly improve config file error messages.
+- cpuset: Minor fixes for man pages.
+- auto-affinity: Update --auto-affinity=help message.
+
+Version 0.29 (2008-07-29):
+- cpuset: Major overhaul of SLURM cpuset support. Now includes a PAM
+   module, pam_slurm_cpuset.so, and a global config file in 
+   /etc/slurm/slurm-cpuset.conf. For more information, see the 
+   new manual pages included with the distribution.
+- auto-affinity: Do not set CPU affinity by default if the number
+   of available CPUs is not evenly divisible by the number of tasks.
+
+Version 0.28 (2008-07-22):
+- auto-affinity: Fix error where spank_post_opt hook was incorrectly
+   run in srun, which caused an immediate error and abort.
+
+Version 0.27 (2008-07-16):
+- cpuset: Expand cpuset support to per-task cpusets via --use-cpusets=tasks.
+
+Version 0.26 (2008-07-16):
+- cpuset: Add support for per-job-step cpusets via the new srun option
+   '--use-cpusets'. See the README or --use-cpusets=help for more information.
+- auto-affinity: Delay detection of current cpuset until after user
+   option processing in the event that user option changed our cpuset.
+
+Version 0.25 (2008-07-10):
+- cpuset: Added cpuset plugin to constrain jobs to number of CPUs 
+   allocated on shared, but not oversubscribed nodes. 
+- auto-affinity: Make auto-affinity plugin cpuset-aware. CPU affinity
+   is assigned as if the job were running on a node the size of the
+   current cpuset. If cpusets are not enabled, the auto-affinity behavior
+   is unchanged.
+
+Version 0.24 (2008-06-10):
+ - auto-affinity: Query SLURM controller for number of CPUs allocated
+    to the current job in exclusive_only mode if the environment variable
+    SLURM_JOB_CPUS_PER_NODE is not set.
+
+Version 0.23 (2008-06-10):
+ - auto-affinity: Add 'exclusive_only' flag to auto-affinity plugin 
+    to constrain plugin activity to only those jobs that have exclusive
+    use of the current node.
+
+(2008-06-10):
+ - Started NEWS file.
+
+$Id: NEWS 7811 2008-09-25 22:21:11Z grondo $
