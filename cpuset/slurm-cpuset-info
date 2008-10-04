@@ -1,0 +1,376 @@
+#!/usr/bin/perl -w
+##############################################################################
+#
+#  Simple script to print information about SLURM cpusets on nodes.
+#
+#  Requires pdsh and the Hostlist.pm perl module be installed.
+#
+use strict;
+use File::Basename qw/ basename /;
+use Getopt::Long qw/ :config gnu_getopt /;
+use Hostlist qw/ expand compress/;
+
+use FileHandle; # for "format_name" and "format_top_name"
+
+##############################################################################
+#
+#  Main
+#
+my $hostname = `hostname -s`;
+chomp $hostname;
+
+my $conf = &conf_create ();
+my $opts = &parse_cmdline ();
+my $cmd  = "grep -Hs . /dev/cpuset/slurm/\*/\*/cpus";
+
+&read_all_node_info ();
+&read_all_job_info ();
+
+my $results = &read_cpuset_info ();
+
+
+if ($opts->{per_node}) {
+    &print_node_results ($results);
+} 
+else {
+    if (!keys %$results) {
+        printf "No cpusets found.\n";
+        exit 0;
+    }
+    &print_results ($results);
+}
+
+exit 0;
+
+
+##############################################################################
+#
+#  Subroutines
+#
+sub conf_create 
+{
+    my $cf = {
+        progname => basename $0,
+        jobs     => {},
+        nodelist => []
+    };
+    return $cf;
+}
+
+sub parse_cmdline
+{
+    my $opts = { local_only => 1 };
+    my $rc = GetOptions ($opts,
+            'help|h',
+            'verbose|v+',
+            'nodes|n=s',
+            'per_node|per-node|N',
+            'all_nodes|all|a',
+            'jobids|j=s',
+            'users|u=s',
+            'partitions|p=s',
+            'xn|exclude-ncpus=s',
+            'in|include-ncpus=s',
+    );
+
+    $opts->{local_only} = 0 if ($opts->{nodes} || 
+                                $opts->{all_nodes} ||
+                                $opts->{jobids} ||
+                                $opts->{users} ||
+                                $opts->{partitions});
+
+    if ($opts->{nodes}) {
+        @{$opts->{nodelist}} = &expand ($opts->{nodes});
+    }
+
+    if ($opts->{jobids}) {
+        @{$opts->{joblist}} = &expand ($opts->{jobids});
+    }
+
+    &usage() if defined $opts->{help} || !$rc;
+    return $opts;
+}
+
+sub usage
+{
+    print STDERR <<EOF;
+Usage: $conf->{progname} [OPTIONS]...
+
+Query general information about cpusets in use by SLURM jobs.  By default, 
+  the program displays CPUs in use by all jobs on the current node, but 
+  can optionally display concise per-node information or display CPUs
+  in use by jobs across the system.
+
+    -h, --help                 Display this usage message.
+    -n, --nodes=LIST           Report on nodes in LIST (default = local node).
+    -a, --all                  Report on all nodes or jobs.
+    -j, --jobids=LIST          Only report on job ids in LIST.
+    -u, --users=LIST           Only report on users in LIST.
+    -p, --partitions=LIST      Only report on partitions in LIST.
+        --exclude-ncpus=N      Exclude jobs with CPU count of N.
+        --include-ncpus=N      Include only jobs with CPU count of N.
+        --xn=N                 Synonym for --exclude-ncpus=N.
+        --in=N                 Synonym for --include-ncpus=N.
+
+    -N, --per-node             Print per node output instead of per job.
+                                
+
+EOF
+    exit 1;
+}
+
+sub read_all_job_info
+{
+    my $cmd = "squeue -trunning -ho '%i %u %U %C %N'";
+
+    if ($opts->{jobids}) {
+        $cmd .= " -j $opts->{jobids}";
+    }
+
+    if ($opts->{users}) {
+        $cmd .= " -u $opts->{users}";
+    }
+
+    if ($opts->{partitions}) {
+        $cmd .= " -p $opts->{partitions}";
+    }
+
+    open (CMD, "$cmd |") or die "Failed to run squeue: $!\n";
+
+    while (<CMD>) {
+        my ($jid, $user, $uid, $cpus, $nodes) = split /\s+/;
+        $conf->{jobs}{$jid} = {
+            user  => $user,
+            uid   => $uid,
+            ncpus => $cpus,
+            nodes => $nodes
+        };
+
+        my @hosts = &expand ($nodes);
+
+        next if ($opts->{local_only} && !grep /^$hostname$/, @hosts);
+
+        next if (!$opts->{all_nodes} && $opts->{nodelist} && 
+                 !&Hostlist::within (\@hosts, $opts->{nodelist}));
+
+        push (@{$conf->{nodelist}}, @hosts);
+    }
+
+    close (CMD);
+}
+
+sub read_all_node_info 
+{
+    my $cmd = "sinfo -ho '%P %N'";
+
+    open (CMD, "$cmd |") or die "Failed to run sinfo: $!\n";
+    while (<CMD>) {
+        my ($p, $nodes) = split /\s+/;
+
+        $p =~ s/\*$//;
+
+        my @nodes = &expand ($nodes);
+
+        push (@{$conf->{partitions}{$p}{nodes}}, @nodes);
+        $conf->{all_nodes}{$_}{partition} = $p for @nodes;
+    }
+    close (CMD);
+}
+
+sub partition_nodes 
+{
+    my ($partitions) = @_;
+    my @nodes = ();
+
+    for my $p (split (/,/, $partitions)) {
+        if (!exists $conf->{partitions}{$p}) {
+            print STDERR "Unknown partition \"$p\" ($partitions)\n";
+            exit 1;
+        }
+        push (@nodes, @{$conf->{partitions}{$p}{nodes}});
+    }
+
+    return (@nodes);
+}
+
+sub read_cpuset_info
+{
+    my $results = {};
+    my %dups = ();
+    my $cpuset_path = "/dev/cpuset/slurm";
+
+    my $cmd = "grep -Hs . $cpuset_path/\*/\*/cpus $cpuset_path/cpus";
+
+    if (!$opts->{local_only}) {
+
+        if (!defined $conf->{nodelist} && !$opts->{partitions}) {
+            print STDERR "No nodes to target!\n";
+            exit 1;
+        }
+
+        my $pdshcmd = "/usr/bin/pdsh";
+        if ($opts->{nodes} || $opts->{users} || $opts->{jobids}) {
+            $pdshcmd .= " -vw " . &compress (&uniq (@{$conf->{nodelist}}));
+        }
+        elsif ($opts->{partitions}) {
+            @{$conf->{nodelist}} = &partition_nodes ($opts->{partitions});
+            $pdshcmd .= " -vw " .  &compress (&uniq (@{$conf->{nodelist}}));
+        }
+        else {
+            $pdshcmd .= " -vw " . 
+                &compress (&uniq (keys %{$conf->{all_nodes}}));
+        }
+        $cmd = "$pdshcmd '$cmd'";
+    }
+
+    open (CMD, "$cmd |") or die ("Failed to run $cmd: $!\n");
+    while (<CMD>) {
+        s/\s+$//g;
+        next unless length;
+        my ($node) = m|^([^/\s]+): |;
+
+        $node = $hostname if !$node;
+
+        if (m|$cpuset_path/cpus:(\S+)|) {
+            $conf->{nodes}{$node}{cpus} = $1;
+            next;
+        }
+
+        my ($uid, $jid, $cpus) = m|$cpuset_path/(\d+)/(\d+)/cpus:(\S+)|;
+
+        next unless $jid && exists $conf->{jobs}{$jid};
+
+        push (@{$conf->{nodes}{$node}{jobs}}, $jid);
+
+        $results->{$node}{$jid} = {
+            user  => $conf->{jobs}{$jid}{user},
+            uid   => $conf->{jobs}{$jid}{uid},
+            ncpus => $conf->{jobs}{$jid}{ncpus},
+            cpus  => $cpus,
+        };
+
+        for my $c (&expand ("[$cpus]")) {
+            if (exists $dups{$node}{$c}) {
+                print STDERR "Error: CPU $c used more than once on $node!" .
+                             " jobs $dups{$node}{$c} and $jid\n";
+            } else {
+                $dups{$node}{$c} = $jid;
+            }
+
+        }
+    }
+    close (CMD);
+
+    return $results;
+}
+
+my @output;
+
+format non_local_top =
+        HOST     JOBID USER         NCPUS      CPUS 
+.
+format non_local =
+@>>>>>>>>>>> @######## @<<<<<<<<<< @#####  @>>>>>>>
+@output
+.
+
+format local_top =
+    JOBID USER         NCPUS  CPUS 
+.
+format local =
+@######## @<<<<<<<<<< @#####  @<<<<<<<
+@output[1..4]
+.
+
+sub print_results
+{
+    my ($results) = @_;
+
+    #
+    #  Choose correct output format
+    #
+    if ($opts->{local_only}) {
+        format_name     STDOUT "local";
+        format_top_name STDOUT "local_top";
+    } else {
+        format_name     STDOUT "non_local";
+        format_top_name STDOUT "non_local_top";
+    }
+
+    $= = 120;
+     
+    for my $node (&sortn (keys %$results)) {
+        my $x = $results->{$node};
+        my @jids = sort { $x->{$a}{cpus} cmp $x->{$b}{cpus}} keys %{$x};
+        for my $jid (@jids) {
+
+            next if ($opts->{xn} && $opts->{xn} == $x->{$jid}{ncpus});
+            next if ($opts->{in} && $opts->{in} != $x->{$jid}{ncpus});
+
+            @output = 
+                ($node, $jid, $x->{$jid}{user}, 
+                 $x->{$jid}{ncpus}, $x->{$jid}{cpus} );
+
+            write;
+        }
+    }
+}
+
+format node_top =
+        HOST PARTITION    NJOBS   USED               FREE
+.
+format node =
+@>>>>>>>>>>> @<<<<<<<<< @######   @<<<<<<<<<<<<<<<<  @<<<<<<<<<<<<<<<<<
+@output
+.
+
+sub print_node_results
+{
+    my ($results) = @_;
+
+    format_name     STDOUT "node";
+    format_top_name STDOUT "node_top";
+
+    $= = 120;
+
+    for my $node (&sortn (keys %{$conf->{nodes}})) {
+        my $x = $results->{$node};
+
+        my @cpus = &expand ("[$conf->{nodes}{$node}{cpus}]");
+        my @used = &uniq (map { &expand ("[$x->{$_}{cpus}]") } keys %{$x});
+        my @free = &Hostlist::diff (\@cpus, \@used);
+
+        my $used = &compress (@used);
+        my $free = &compress (@free);
+
+        @used = () if (!@used);
+
+        $used =~ s/\[(.*)\]/$1/;
+        $free =~ s/\[(.*)\]/$1/;
+
+        @output = 
+            ($node, 
+             $conf->{all_nodes}{$node}{partition},
+             exists $conf->{nodes}{$node}{jobs} ?
+                scalar (@{$conf->{nodes}{$node}{jobs}}) : 0,
+             scalar @used . ": $used",
+             scalar @free . ": $free");
+        write;
+
+    }
+}
+
+sub uniq
+{
+    my %seen = ();
+    return grep { !$seen{$_}++ } @_;
+}
+
+sub sortn
+{
+    map {$$_[0]} sort {($$a[1]||0)<=>($$b[1]||0)} map {[$_,/(\d*)$/]} @_;
+}
+
+
+
+# vi: ts=4 sw=4 expandtab
