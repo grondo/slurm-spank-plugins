@@ -38,6 +38,7 @@ License:    GPL
 BuildRoot:  %{_tmppath}/%{name}-%{version}
 Source0:    %{name}-%{version}.tgz
 Requires: slurm
+Obsoletes: chaos-spankings
 
 BuildRequires: slurm-devel bison flex
 
@@ -49,6 +50,7 @@ BuildRequires: pam-devel
 %if %{_with llnl_plugins}
 BuildRequires: job
 %endif
+
 
 %description
 This package contains a set of SLURM spank plugins which enhance and
@@ -82,10 +84,13 @@ Currently includes:
 Summary:  SLURM spank plugins LLNL-only
 Group:    System Environment/Base
 Requires: slurm job
+Obsoletes: chaos-spankings
+
 %description llnl
 The set of SLURM SPANK plugins that will only run on LLNL systems.
 Includes:
  - oom-detect.so : Detect tasks killed by OOM killer.
+
 %endif
 
 
@@ -94,6 +99,7 @@ Includes:
 Summary:  Cpuset spank plugin for slurm.
 Group:    System Environment/Base
 Requires: libbitmask libcpuset slurm pam
+Obsoletes: chaos-spankings-cpuset
 
 %description cpuset
 This package contains a SLURM spank plugin for enabling
@@ -112,6 +118,7 @@ A PAM module - pam_slurm_cpuset.so - is also provided for
 constraining user logins in a similar fashion. For more
 information see the slurm-cpuset(8) man page provided with
 this package.
+
 %endif
 
 %prep

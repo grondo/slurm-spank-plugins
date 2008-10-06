@@ -1,3 +1,8 @@
+2008-10-06 Mark Grondona <mgrondona@llnl.gov>
+
+	* slurm-spank-plugins.spec :
+	  Obsoletes: chaos-spankings.
+
 2008-10-03 Mark Grondona <mgrondona@llnl.gov>
 
 	* : tag v0.1.
