@@ -1,3 +1,7 @@
+Version 0.2 (2008-10-06):
+ - slurm-spank-plugins RPMs now obsolete chaos-spankings RPMs.
+    For older NEWS items, see NEWS.old.
+
 Version 0.1 (2008-10-03):
  - First release as slurm-spank-plugins.
  - For older history, see NEWS.old.
