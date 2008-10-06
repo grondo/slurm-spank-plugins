@@ -169,7 +169,7 @@ fi
 
 %files 
 %defattr(-,root,root,0755)
-%doc NEWS ChangeLog README.use-env
+%doc NEWS NEWS.old ChangeLog README.use-env
 %{_libdir}/slurm/renice.so
 %{_libdir}/slurm/oom-detect.so
 %{_libdir}/slurm/system-safe.so
@@ -188,12 +188,12 @@ fi
 
 %files llnl
 %defattr(-,root,root,0755)
-%doc NEWS ChangeLog
+%doc NEWS NEWS.old ChangeLog
 %{_libdir}/slurm/oom-detect.so
 
 %files cpuset
 %defattr(-,root,root,0755)
-%doc NEWS ChangeLog cpuset/README
+%doc NEWS NEWS.old ChangeLog cpuset/README
 %{_sysconfdir}/init.d/slurm-cpuset
 %{_libdir}/slurm/cpuset.so
 /%{_lib}/security/pam_slurm_cpuset.so

@@ -1,6 +1,9 @@
 2008-10-06 Mark Grondona <mgrondona@llnl.gov>
 
 	* slurm-spank-plugins.spec :
+	  Include NEWS.old (from older chaos-spankings package) in RPMs.
+
+	* slurm-spank-plugins.spec :
 	  Obsoletes: chaos-spankings.
 
 2008-10-03 Mark Grondona <mgrondona@llnl.gov>
