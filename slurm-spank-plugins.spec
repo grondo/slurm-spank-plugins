@@ -145,9 +145,11 @@ make \
   %{?_with_cpuset:BUILD_CPUSET=1} \
   install
 
+%if %{_with cpuset}
 # slurm-cpuset init script
 install -D -m0755 cpuset/cpuset.init \
 		$RPM_BUILD_ROOT/%{_sysconfdir}/init.d/slurm-cpuset
+%endif
 
 # create /etc/slurm/plugstack.d directory
 mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/slurm/plugstack.conf.d
@@ -159,6 +161,7 @@ echo " required  preserve-env.so" > \
 %clean
 rm -rf "$RPM_BUILD_ROOT"
 
+%if %{_with cpuset}
 %post cpuset
 if [ -x /sbin/chkconfig ]; then /sbin/chkconfig --add slurm-cpuset; fi
 
@@ -166,6 +169,7 @@ if [ -x /sbin/chkconfig ]; then /sbin/chkconfig --add slurm-cpuset; fi
 if [ "$1" = 0 ]; then
   if [ -x /sbin/chkconfig ]; then /sbin/chkconfig --del slurm-cpuset; fi
 fi
+%endif
 
 %files 
 %defattr(-,root,root,0755)
@@ -186,11 +190,14 @@ fi
 %dir %attr(0755,root,root) %{_sysconfdir}/slurm/plugstack.conf.d
 %config(noreplace) %{_sysconfdir}/slurm/plugstack.conf.d/*
 
+%if %{_with llnl_plugins}
 %files llnl
 %defattr(-,root,root,0755)
 %doc NEWS NEWS.old ChangeLog
 %{_libdir}/slurm/oom-detect.so
+%endif
 
+%if %{_with cpuset}
 %files cpuset
 %defattr(-,root,root,0755)
 %doc NEWS NEWS.old ChangeLog cpuset/README
@@ -201,5 +208,6 @@ fi
 %{_mandir}/man1/use-cpusets.*
 %{_mandir}/man8/pam_slurm_cpuset.*
 %{_mandir}/man8/slurm-cpuset.*
+%endif
 
 
