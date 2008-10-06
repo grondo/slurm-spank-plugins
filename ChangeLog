@@ -1,4 +1,7 @@
 2008-10-06 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.3.
+
 	* slurm-spank-plugins.spec :
 	  Be sure all optional spec file contents are wrapped in
 	  appropriate conditionals.

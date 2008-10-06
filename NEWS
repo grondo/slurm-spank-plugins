@@ -1,3 +1,6 @@
+Version 0.3 (2008-10-06):
+ - Fix RPM build without cpuset and llnl subpackages.
+
 Version 0.2 (2008-10-06):
  - slurm-spank-plugins RPMs now obsolete chaos-spankings RPMs.
     For older NEWS items, see NEWS.old.
