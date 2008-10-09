@@ -1,8 +1,3 @@
-Version 0.4 (2008-10-09):
- - preserve-env: Fix slurmstepd crash when dealing with environment 
-    variables larger than 64B (a very common case). The plugin now
-    uses dynamic instead of static buffers.
-
 Version 0.3 (2008-10-06):
  - Fix RPM build without cpuset and llnl subpackages.
 
