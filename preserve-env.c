@@ -59,12 +59,16 @@ SPANK_PLUGIN (preserve-env, 1)
  *
  ****************************************************************************/
 static unsigned int enabled = 0;
+static unsigned int debug = 0;
 
 static int preserve_slurm_env (void);
 
 static int preserve_opt_process (int val, const char *optarg, int remote)
 {
     enabled = 1;
+
+    if (optarg && (strcmp (optarg, "verbose") || strcmp (optarg, "v")))
+        debug = 1;
 
     /* 
      *  If in srun, preserve all SLURM_* env vars as soon as possible
@@ -83,7 +87,7 @@ struct spank_option spank_options [] =
       "Preserve all current SLURM env vars in remote task(s). "
       "Useful with \"salloc [opts] srun --pty -n1 -N1 $SHELL\" "
       "so that remote environment mirrors salloc's environment",
-      0, 0, (spank_opt_cb_f) preserve_opt_process
+      2, 0, (spank_opt_cb_f) preserve_opt_process
     },
     SPANK_OPTIONS_TABLE_END
 };
@@ -91,16 +95,24 @@ struct spank_option spank_options [] =
 /****************************************************************************/
 
 /*
- *  Copy env var entry in [entry] into buffer [var] of size [len],
+ *  Allocate copy of env var entry in [entry] into buffer [bufp],
  *   NUL terminating at '='. Furthermore, if [valp] is non-NULL,
  *   set [valp] to point to first character after nullified '='.
  *
  */
-static int get_env_var (const char *entry, char *var, int len, char **valp)
+static int get_env_var (const char *entry, char **bufp, char **valp)
 {
+    char *var;
     const char *p = entry;
+    int len = strlen (entry) + 1;
 
-    memset (var, 0, len);
+    *bufp = malloc (len * sizeof (char));
+    if (*bufp == NULL)
+        return (-1);
+
+    memset (*bufp, 0, len);
+
+    var = *bufp;
 
     while (*p != '\0') {
         *var = *p;
@@ -123,26 +135,36 @@ static int get_env_var (const char *entry, char *var, int len, char **valp)
  */
 static int preserve_slurm_var (const char *entry)
 {
-    char *val;
-    char var [1024];
     char newvar [1024];
+    char *var = NULL;
+    char *val = NULL;
+    int len = sizeof (newvar) - 1;
     int n;
-    int len = sizeof (var) - 1;
 
-    get_env_var (entry, var, len, &val);
+    if (get_env_var (entry, &var, &val) < 0) {
+        fprintf (stderr, "Failed to allocate copy of %s\n", entry);
+        return (-1);
+    }
 
     n = snprintf (newvar, len, "save_%s", var);
 
     if (n < 0 || n >= len) {
-        fprintf (stderr, "Variable name %s too long to copy!\n", var);
+        fprintf (stderr, "preserve-env: name %s too long to copy!\n", var);
+        free (var);
         return (-1);
     }
 
     if (setenv (newvar, val, 1) < 0) {
-        fprintf (stderr, "Failed to set %s=%s: %s\n", 
+        fprintf (stderr, "preserve-env: Failed to set %s=%s: %s\n", 
                 newvar, val, strerror (errno));
         return (-1);
     }
+
+    if (debug)
+        fprintf (stderr, "preserve-env: preserving %s\n", entry);
+
+    free (var);
+
     return (0);
 }
 
@@ -189,7 +211,7 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
     List l;
     const char **env;
     char *entry;
-    char var [64];
+    char *var;
     char *val;
 
     if (!enabled)
@@ -209,7 +231,7 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
     l = list_create (NULL);
 
     if (spank_get_item (sp, S_JOB_ENV, &env) != ESPANK_SUCCESS) {
-        fprintf (stderr, "Failed to get job environment!\n");
+        fprintf (stderr, "preserve-env: Failed to get job environment!\n");
         return (-1);
     }
 
@@ -224,9 +246,12 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
     }
 
     while ((entry = list_pop (l))) {
-        get_env_var (entry, var, sizeof (var), &val);
+        get_env_var (entry, &var, &val);
         spank_unsetenv (sp, var);
+        if (debug)
+            fprintf (stderr, "preserve-env: unsetenv (%s)\n", var);
         free (entry);
+        free (var);
     }
 
     /*
@@ -234,7 +259,7 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
      */
 
     if (spank_get_item (sp, S_JOB_ENV, &env) != ESPANK_SUCCESS) {
-        fprintf (stderr, "Failed to get job environment!\n");
+        fprintf (stderr, "preserve-env: Failed to get job environment!\n");
         return (-1);
     }
 
@@ -245,10 +270,14 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
     }
 
     while ((entry = list_pop (l))) {
-        get_env_var (entry, var, sizeof (var), &val);
+        get_env_var (entry, &var, &val);
+
+        if (debug)
+            fprintf (stderr, "preserve-env: set %s\n", entry + 5);
 
         if (spank_setenv (sp, var + 5, val, 1) != ESPANK_SUCCESS) {
-            fprintf (stderr, "spank_setenv (%s) failed\n", var + 5);
+            fprintf (stderr, "preserve-env: spank_setenv (%s) failed\n", 
+                    var + 5);
         }
 
         /*
@@ -257,6 +286,7 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
         spank_unsetenv (sp, var);
 
         free (entry);
+        free (var);
     }
 
     list_destroy (l);
