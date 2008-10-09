@@ -1,5 +1,7 @@
 2008-10-09 Mark Grondona <mgrondona@llnl.gov>
 
+	* : tag v0.4.
+
 	* preserve-env.c :
 	  Fix crash in slurmstepd when dealing with environment entries
 	  larger than 64 bytes. Make all environment variable name and
