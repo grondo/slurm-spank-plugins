@@ -1,5 +1,11 @@
 2009-03-13 Mark Grondona <mgrondona@llnl.gov>
 
+	* slurm-spank-plugins.spec :
+	  Remove preserve-env.so from RPM, this functionality is
+	  now available in SLURM 1.4.x. The plugin remains as a
+	  reference. Also remove oom-detect.so, from the base 
+	  slurm-spank-plugins RPM. It belongs only in the llnl RPM.
+
 	* auto-affinity.c :
 	  Use the physical layout of CPUs as documented under
 	  /sys/devices/system/cpu/cpu*/topology/ to assign CPUs

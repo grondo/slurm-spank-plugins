@@ -154,9 +154,15 @@ install -D -m0755 cpuset/cpuset.init \
 # create /etc/slurm/plugstack.d directory
 mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/slurm/plugstack.conf.d
 
+#
+#  As of SLURM 1.4.x, preserve-env functionality is availble 
+#   directly in SLURM. We keep the plugin around for reference,
+#   but do not install it.
+#
 # create entry for preserve-env.so
-echo " required  preserve-env.so" > \
-     $RPM_BUILD_ROOT/%{_sysconfdir}/slurm/plugstack.conf.d/99-preserve-env
+#echo " required  preserve-env.so" > \
+#     $RPM_BUILD_ROOT/%{_sysconfdir}/slurm/plugstack.conf.d/99-preserve-env
+rm -f $RPM_BUILD_ROOT/%{_libdir}/slurm/preserve-env.so
 
 %clean
 rm -rf "$RPM_BUILD_ROOT"
@@ -175,20 +181,17 @@ fi
 %defattr(-,root,root,0755)
 %doc NEWS NEWS.old ChangeLog README.use-env
 %{_libdir}/slurm/renice.so
-%{_libdir}/slurm/oom-detect.so
 %{_libdir}/slurm/system-safe.so
 %{_libdir}/slurm/iotrace.so
 %{_libdir}/slurm/tmpdir.so
 %{_libdir}/slurm/use-env.so
 %{_libdir}/slurm/overcommit-memory.so
 %{_libdir}/slurm/auto-affinity.so
-%{_libdir}/slurm/preserve-env.so
 %{_libdir}/slurm/pty.so 
 %{_libdir}/slurm/addr-no-randomize.so
 %{_libdir}/system-safe-preload.so
 %{_libexecdir}/%{name}/overcommit-util
 %dir %attr(0755,root,root) %{_sysconfdir}/slurm/plugstack.conf.d
-%config(noreplace) %{_sysconfdir}/slurm/plugstack.conf.d/*
 
 %if %{_with llnl_plugins}
 %files llnl
