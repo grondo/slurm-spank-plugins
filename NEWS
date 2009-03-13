@@ -1,3 +1,14 @@
+Version 0.5 (2009-03-13):
+ - auto-affinity: Don't assume any correspondence between CPU
+    logical ID and CPU physical location (i.e. socket). This fixes
+    poor CPU assignment on systems where CPUs are not necessarily
+    sequentially numbered.
+ - The preserve-env plugin is no longer packaged automatically
+    with the slurm-spank-plugins RPM. This functionality is now
+    available in SLURM directly as of SLURM 1.4.
+ - Don't include oom-detect in the base slurm-spank-plugins RPM,
+    it belongs in the llnl-specific RPM only.
+   
 Version 0.4 (2008-10-09):
  - preserve-env: Fix slurmstepd crash when dealing with environment
     variables larger than 64B (a very common case). The plugin now

@@ -1,5 +1,7 @@
 2009-03-13 Mark Grondona <mgrondona@llnl.gov>
 
+	* : tag v0.5.
+
 	* slurm-spank-plugins.spec :
 	  Remove preserve-env.so from RPM, this functionality is
 	  now available in SLURM 1.4.x. The plugin remains as a
