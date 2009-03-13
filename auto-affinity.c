@@ -35,6 +35,7 @@
 #include <slurm/slurm.h>
 #include <slurm/spank.h>
 
+#include "lib/list.h"
 #include "lib/split.h"
 #include "lib/fd.h"
 
@@ -51,6 +52,7 @@ static int exclusive_only = 0;
 
 static cpu_set_t cpus_available;
 static int       ncpus_available;
+static int      *cpu_position_map = NULL;
 
 static const char auto_affinity_help [] = 
 "\
@@ -166,6 +168,125 @@ static int parse_argv (int ac, char **av, int remote)
     return (0);
 }
 
+static int read_file_int (const char *path)
+{
+    int val;
+    FILE *fp = fopen (path, "r");
+
+    if (fp == NULL)
+        return (-1);
+
+    if (fscanf (fp, "%d", &val) != 1) {
+        slurm_error ("auto-affinity: failed to read %s: %m\n", path);
+        val = -1;
+    }
+
+    fclose (fp);
+
+    return (val);
+}
+
+struct cpu_info {
+    int id;
+    int pkgid;
+    int coreid;
+};
+
+static int lookup_cpu_info (struct cpu_info *cpu)
+{
+    const char cpudir[] = "/sys/devices/system/cpu";
+    char path [4096];
+
+    snprintf (path, sizeof (path), 
+            "%s/cpu%d/topology/physical_package_id", cpudir, cpu->id);
+
+    cpu->pkgid = read_file_int (path);
+    if (cpu->pkgid < 0)
+        return (-1);
+
+    snprintf (path, sizeof (path), 
+            "%s/cpu%d/topology/core_id", cpudir, cpu->id);
+
+    cpu->coreid = read_file_int (path);
+    if (cpu->coreid < 0)
+        return (-1);
+
+    return (0);
+}
+
+
+static void cpu_info_destroy (struct cpu_info *cpu)
+{
+    if (cpu)
+        free (cpu);
+}
+
+static struct cpu_info * cpu_info_create (int id)
+{
+    struct cpu_info *cpu = malloc (sizeof (struct cpu_info));
+
+    if (!cpu)
+        return NULL;
+
+    cpu->id = id;
+
+    if (lookup_cpu_info (cpu) < 0) {
+        slurm_error ("auto-affinity: Failed to get info for cpu%d\n", id);
+        cpu_info_destroy (cpu);
+        return (NULL);
+    }
+        
+    return (cpu);
+}
+
+static int cpu_info_cmp (struct cpu_info *cpu1, struct cpu_info *cpu2)
+{
+    if (cpu1->pkgid == cpu2->pkgid)
+        return (cpu1->coreid - cpu2->coreid);
+    else 
+        return (cpu1->pkgid - cpu2->pkgid);
+}
+
+static int create_cpu_position_map (int ncpus)
+{
+    List cpu_info_list;
+    ListIterator iter;
+    int i;
+    struct cpu_info *cpu;
+
+    cpu_info_list = list_create ((ListDelF) cpu_info_destroy);
+
+    for (i = 0; i < ncpus; i++) {
+        if ((cpu = cpu_info_create (i)) == NULL)
+            return (-1);
+        list_push (cpu_info_list, cpu);
+    }
+
+    /*
+     *  Sort list of CPUs by physical location.
+     */
+    list_sort (cpu_info_list, (ListCmpF) cpu_info_cmp);
+
+    /*
+     *  Build array to map cpu position back to cpu logical id:
+     */
+    i = 0;
+    cpu_position_map = malloc (ncpus * sizeof (int));
+
+    iter = list_iterator_create (cpu_info_list);
+
+    while ((cpu = list_next (iter)))
+        cpu_position_map[i++] = cpu->id;
+
+    list_destroy (cpu_info_list);
+
+    return (0);
+}
+
+static int cpu_position_to_id (int n)
+{
+    return cpu_position_map [n];
+}
 
 /*
  *  XXX: Since we don't have a good way to determine the number of
@@ -257,11 +378,25 @@ int slurm_spank_init (spank_t sp, int ac, char **av)
         return (-1);
     }
 
+    if (create_cpu_position_map (ncpus) < 0)
+        return (-1);
+
     if (spank_get_item (sp, S_JOB_LOCAL_TASK_COUNT, &ntasks) != ESPANK_SUCCESS) 
     {
         slurm_error ("Failed to get number of local tasks\n");
         return (-1);
     }
+
+    return (0);
+}
+
+int slurm_spank_exit (spank_t sp, int ac, char **av)
+{
+    if (!spank_remote (sp))
+        return (0);
+
+    if (cpu_position_map != NULL)
+        free (cpu_position_map);
 
     return (0);
 }
@@ -374,7 +509,8 @@ static int generate_mask (cpu_set_t *setp, int localid)
     int cpus_per_task = get_cpus_per_task ();
 
     if (cpus_per_task == 1) {
-        if ((cpu = mask_to_available (localid + startcpu)) < 0) 
+        int n = cpu_position_to_id (localid + startcpu);
+        if ((cpu = mask_to_available (n)) < 0) 
             return (-1);
         CPU_SET (cpu, setp);
         return (0);
@@ -383,7 +519,7 @@ static int generate_mask (cpu_set_t *setp, int localid)
     cpu = ((localid * cpus_per_task) + startcpu) % ncpus_available;
 
     while (i++ < cpus_per_task) {
-        int bit = mask_to_available (cpu);
+        int bit = mask_to_available (cpu_position_to_id (cpu));
         if (bit < 0) 
             return (-1);
         CPU_SET (bit, setp);
@@ -402,7 +538,7 @@ static int generate_mask_reverse (cpu_set_t *setp, int localid)
 
     if (cpus_per_task == 1) {
         cpu = (lastcpu - (localid + startcpu) % ncpus_available);
-        if ((cpu = mask_to_available (cpu)) < 0) 
+        if ((cpu = mask_to_available (cpu_position_to_id (cpu))) < 0) 
             return (-1);
         CPU_SET (cpu, setp);
         return (0);
@@ -411,7 +547,7 @@ static int generate_mask_reverse (cpu_set_t *setp, int localid)
     cpu = lastcpu - (((localid * cpus_per_task) + startcpu) % ncpus_available);
 
     while (i++ < cpus_per_task) {
-        int bit = mask_to_available (cpu);
+        int bit = mask_to_available (cpu_position_to_id (cpu));
         if (bit < 0)
             return (-1);
         CPU_SET (bit, setp);
