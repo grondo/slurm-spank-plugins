@@ -1,5 +1,7 @@
 2009-04-23 Jim Garlick <garlick@llnl.gov>
 
+	* : tag v0.6.
+
 	* private-mount.c : New.
 
 2009-03-13 Mark Grondona <mgrondona@llnl.gov>

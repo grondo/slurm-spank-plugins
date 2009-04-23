@@ -1,3 +1,6 @@
+Version 0.6 (2009-04-23):
+ - Added private-mount plugin (llnl subpackage).
+
 Version 0.5 (2009-03-13):
  - auto-affinity: Don't assume any correspondence between CPU
     logical ID and CPU physical location (i.e. socket). This fixes
