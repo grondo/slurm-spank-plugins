@@ -18,7 +18,8 @@ PLUGINS = \
    auto-affinity.so \
    pty.so \
    addr-no-randomize.so \
-   preserve-env.so
+   preserve-env.so \
+   private-mount.so
 
 LIBRARIES = \
    system-safe-preload.so \
@@ -55,6 +56,9 @@ auto-affinity.so : auto-affinity.o lib/split.o lib/list.o lib/fd.o
 
 preserve-env.so : preserve-env.o lib/list.o
 	$(CC) -shared -o $*.so preserve-env.o lib/list.o
+
+private-mount.so : private-mount.o lib/list.o lib/split.o
+	$(CC) -shared -o $*.so private-mount.o lib/list.o lib/split.o
 
 pty.so : pty.o
 	$(CC) -shared -o $*.so $< -lutil
