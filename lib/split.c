@@ -74,11 +74,18 @@ List list_split_append (List l, char *sep, char *str)
         sep = " \t";
 
     while ((tok = _next_tok(sep, &str)) != NULL) {
-        if (strlen(tok) > 0)
-            list_append(l, strdup(tok));
+        if (strlen(tok) > 0) {
+            char *s = strdup(tok);
+            if (!s || !list_append(l, s))
+                goto fail;
+        }
     }
 
     return l;
+
+fail:
+    list_destroy(l);
+    return NULL;
 }
 
 
@@ -91,6 +98,8 @@ List list_split_append (List l, char *sep, char *str)
 List list_split(char *sep, char *str)
 {
     List new = list_create((ListDelF) free);
+    if (new == NULL)
+        return NULL;
     return list_split_append(new, sep, str);
 }
 
