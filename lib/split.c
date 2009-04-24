@@ -66,28 +66,6 @@ static char *_next_tok(char *sep, char **str)
     return tok;
 }
 
-/*
- * Given a list of separators and a string, generate a list
- *   sep (IN)   string containing separater characters
- *   str (IN)   string containing tokens and separators
- *   RETURN     new list containing all tokens
- */
-List list_split(char *sep, char *str)
-{
-    List new = list_create((ListDelF) free);
-    char *tok;
-
-    if (sep == NULL)
-        sep = " \t";
-
-    while ((tok = _next_tok(sep, &str)) != NULL) {
-        if (strlen(tok) > 0)
-            list_append(new, strdup(tok));
-    }
-
-    return new;
-}
-
 List list_split_append (List l, char *sep, char *str)
 {
     char *tok;
@@ -101,6 +79,19 @@ List list_split_append (List l, char *sep, char *str)
     }
 
     return l;
+}
+
+
+/*
+ * Given a list of separators and a string, generate a list
+ *   sep (IN)   string containing separater characters
+ *   str (IN)   string containing tokens and separators
+ *   RETURN     new list containing all tokens
+ */
+List list_split(char *sep, char *str)
+{
+    List new = list_create((ListDelF) free);
+    return list_split_append(new, sep, str);
 }
 
 int list_join (char *result, size_t len, const char *sep, List l)
