@@ -1,3 +1,11 @@
+2009-05-12 Jim Garlick <garlick@llnl.gov>
+
+	* : tag v0.7.
+
+	* private-mount.c : Insert a statfs(1) call after the mount.
+	  This is a trick to cause lustre to wait for all its servers to
+	  connect before proceeding, harmless for other file systems.
+
 2009-04-23 Jim Garlick <garlick@llnl.gov>
 
 	* : tag v0.6.

@@ -37,6 +37,7 @@
 #include <slurm/spank.h>
 #include <libgen.h>
 #include <sys/stat.h>
+#include <sys/statfs.h>
 #include <errno.h>
 
 #include "lib/list.h"
@@ -45,7 +46,6 @@
 #define PATH_REG_FSTAB "/etc/fstab"
 #define PATH_ALT_FSTAB "/etc/slurm/fstab"
 #define PATH_MOUNT     "/bin/mount"
-#define PATH_MKDIR     "/bin/mkdir"
 
 #define MOUNTPT_MODE    0755
 
@@ -134,15 +134,14 @@ static int _mkdir_p (char *path, mode_t mode)
     if ((rc = mkdir (path, mode)) < 0) {
         switch (errno) {
             case ENOENT:
-                if ((cpy = strdup (path))) {
-                    rc = _mkdir_p (dirname (cpy), mode);
-                    free (cpy);
-                } else {
+                if (!(cpy = strdup (path))) {
                     errno = ENOMEM;
                     rc = -1;
+                    break;
                 }
-                if (rc == 0)
+                if ((rc = _mkdir_p (dirname (cpy), mode)) == 0)
                     rc = mkdir (path, mode);
+                free (cpy);
                 break;
             case EEXIST:
                 if (stat (path, &sb) == 0 && S_ISDIR(sb.st_mode))
@@ -157,6 +156,7 @@ static int _mkdir_p (char *path, mode_t mode)
 
 static int _private_mount (void)
 {
+    struct statfs sfs;
     ListIterator itr;
     char *name;
     int rc = 0;
@@ -189,6 +189,15 @@ static int _private_mount (void)
             }
             if (_mount_n (name) < 0) {
                 slurm_error ("%s: mount -n %s: %m\n", PROG, name);
+                rc = -1;
+                break;
+            }
+            /* Lustre hack: statfs normally blocks until all server connections
+             * are established.  Do it here to avoid racing setup and teardown
+             * for very short jobs.
+             */
+            if (statfs (name, &sfs) < 0) {
+                slurm_error ("%s: statfs %s: %m\n", PROG, name);
                 rc = -1;
                 break;
             }
