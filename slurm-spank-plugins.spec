@@ -77,7 +77,8 @@ Currently includes:
  - preserve-env.so: Attempt to preserve exactly the SLURM_* environment
                     variables in remote tasks. Meant to be used like:
 		     salloc -n100 srun --preserve-slurm-env -n1 -N1 --pty bash
-
+ - setsched.so :    enable administrators to enforce a particular kernel scheduling
+                    policy for tasks spawned by slurm
 
 %if %{_with llnl_plugins}
 %package  llnl
@@ -193,6 +194,7 @@ fi
 %{_libdir}/slurm/addr-no-randomize.so
 %{_libdir}/system-safe-preload.so
 %{_libexecdir}/%{name}/overcommit-util
+%{_libdir}/slurm/setsched.so
 %dir %attr(0755,root,root) %{_sysconfdir}/slurm/plugstack.conf.d
 
 %if %{_with llnl_plugins}

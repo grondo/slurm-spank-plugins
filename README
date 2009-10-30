@@ -154,3 +154,18 @@ SLURM_NPROCS, etc., so variables can even be defined differently
 depending of the size of the job.
 
 See README.use-env for further information.
+
+setsched
+------------------
+
+The setsched plugin allows system administrators to configure a
+particular kernel scheduling policy that can be applied to tasks
+spawned by slurmstepd. The policy can be used by default or not.
+In all cases, users can enable/disable as soon as it is described
+in the configuration, using --setsched=[yes|no|auto].
+
+setsched spank module configuration looks like the following
+(default parameters used, policies are configured using numerical
+values) :
+
+  optional setsched.so policy=1 priority=10 default=disabled

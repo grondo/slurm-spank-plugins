@@ -19,7 +19,8 @@ PLUGINS = \
    pty.so \
    addr-no-randomize.so \
    preserve-env.so \
-   private-mount.so
+   private-mount.so \
+   setsched.so
 
 LIBRARIES = \
    system-safe-preload.so \

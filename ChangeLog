@@ -1,3 +1,14 @@
+2009-10-30 Matthieu Hautreux <matthieu.hautreux@cea.fr>
+
+	* : tag v0.8
+	
+	* setsched.c : add setsched plugin which enables to enforce
+	  a particular kernel scheduling policy for tasks spawned
+	  by slurm
+
+	* slurm-spank-plugins.spec : add setsched to the list of 
+	  spank modules included in the base slurm-spank-plugins RPM
+	
 2009-05-12 Jim Garlick <garlick@llnl.gov>
 
 	* : tag v0.7.
