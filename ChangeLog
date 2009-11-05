@@ -1,5 +1,8 @@
 2009-11-05 Mark Grondona <mgrondona@llnl.gov>
 
+	* auto-affinity.c, cpuset/cpuset.c, cpuset/pam_slurm_cpuset.c :
+	  Handle new job_resources_t member of job_info_t structure.
+
 	* cpuset/cpuset.c, cpuset/slurm.c, cpuset/slurm.h :
 	  Use slurm_load_job in preference to slurm_load_jobs where
 	  appropriate. 

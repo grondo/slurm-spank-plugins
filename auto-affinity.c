@@ -288,6 +288,17 @@ static int cpu_position_to_id (int n)
     return cpu_position_map [n];
 }
 
+static int get_nodeid (spank_t sp)
+{
+    int nodeid = -1;
+    if (spank_get_item (sp, S_JOB_NODEID, &nodeid) != ESPANK_SUCCESS) {
+        if (verbose)
+            fprintf (stderr, "auto-affinity: Failed to get my NODEID!\n");
+        return (-1);
+    }
+    return (nodeid);
+}
+
 /*
  *  XXX: Since we don't have a good way to determine the number of
  *   CPUs allocated to this job on this node, we have to query
@@ -319,10 +330,20 @@ static int query_ncpus_per_node (spank_t sp)
         job_info_t *j = &msg->job_array[i];
 
         if (j->job_id == jobid) {
+#if (SLURM_API_VERSION >= SLURM_VERSION_NUM(2,1,0))
+            job_resources_t *jres = j->job_resrcs;
+            int nodeid = get_nodeid (sp);
+
+            if (nodeid < 0)
+                break;
+
+            cpus_per_node = slurm_job_cpus_allocated_on_node_id (jres, nodeid);
+#else
             /*
              * XXX: Assume cpus_per_node is the same across the whole job.
              */
             cpus_per_node = (int) j->cpus_per_node[0];
+#endif /* SLURM VERSION < 2.1.0 */
             break;
         }
     }

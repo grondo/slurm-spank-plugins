@@ -225,10 +225,17 @@ int hostname_hostid (const char *host, const char *nodes)
     return (n);
 }
 
-int cpus_on_node (job_info_t *j, int hostid)
+int cpus_on_node (job_info_t *j, const char *host)
 {
+#if (SLURM_API_VERSION >= SLURM_VERSION_NUM(2,1,0))
+    return slurm_job_cpus_allocated_on_node (j->job_resrcs, host);
+#else /* SLURM_VERSION < 2.1.0 */
     int i;
     int start = 0;
+    int hostid = hostname_hostid (host, j->nodes);
+
+    if (hostid < 0)
+        return (-1);
 
     for (i = 0; i < j->num_cpu_groups; i++) {
         if (hostid >= start && hostid < (start + j->cpu_count_reps[i]))
@@ -238,6 +245,7 @@ int cpus_on_node (job_info_t *j, int hostid)
     }
 
     return (0);
+#endif /* SLURM_VERSION >= 2.1.0 */
 }
 
 int create_all_job_cpusets (cpuset_conf_t conf, uid_t uid)
@@ -261,18 +269,13 @@ int create_all_job_cpusets (cpuset_conf_t conf, uid_t uid)
 
     for (i = 0; i < msg->record_count; i++) {
         job_info_t *j = &msg->job_array[i];
-        int hostid;
         int ncpus;
 
         if ((j->user_id != uid) || (j->job_state != JOB_RUNNING))
             continue;
 
-        if ((hostid = hostname_hostid (hostname, j->nodes)) < 0)
-            continue;
-
-        if (!(ncpus = cpus_on_node (j, hostid))) {
+        if (!(ncpus = cpus_on_node (j, hostname))) {
             log_err ("job %u: Failed to find ncpus for this node", j->job_id);
-            continue;
         }
 
         if (!job_cpuset_exists (j->job_id, j->user_id) &&
