@@ -156,8 +156,8 @@ static int query_ncpus_per_node (spank_t sp, uint32_t jobid)
     /*
      * Otherwise, we have to query all jobs and find the right job record.
      */
-    if (dyn_slurm_load_jobs (&msg) < 0) {
-        cpuset_error ("slurm_load_jobs: %s\n", slurm_strerror (errno));
+    if (dyn_slurm_load_job (&msg, jobid) < 0) {
+        cpuset_error ("slurm_load_job: %s\n", slurm_strerror (errno));
         return (-1);
     }
 

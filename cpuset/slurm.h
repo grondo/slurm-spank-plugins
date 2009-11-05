@@ -29,6 +29,7 @@
 #include <slurm/slurm.h>
 
 int dyn_slurm_load_jobs (job_info_msg_t **msgp);
+int dyn_slurm_load_job (job_info_msg_t **msgp, uint32_t jobid);
 char * dyn_slurm_strerror (int errnum);
 void dyn_slurm_free_job_info_msg (job_info_msg_t *msg);
 void dyn_slurm_close ();

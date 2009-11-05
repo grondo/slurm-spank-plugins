@@ -68,6 +68,27 @@ int dyn_slurm_load_jobs (job_info_msg_t **msgp)
 }
 
 /*
+ *  Wrapper for SLURM API function slurm_load_job ()
+ *   (Implemented via slurm_load_jobs() if no symbol exists)
+ */
+int dyn_slurm_load_job (job_info_msg_t **msgp, uint32_t jobid)
+{
+    static int (*load_job) (job_info_msg_t **msgp, uint32_t jobid);
+
+    dyn_slurm_open ();
+
+    if (!load_job && !(load_job = dlsym (slurm_h, "slurm_load_job"))) {
+        /*
+         *  Fall back to slurm_load_jobs ()
+         */
+        return (dyn_slurm_load_jobs (msgp));
+    }
+
+    return load_job (msgp, jobid);
+}
+
+
+/*
  *  Wrapper for SLURM API function slurm_strerror ()
  */
 char * dyn_slurm_strerror (int errnum)

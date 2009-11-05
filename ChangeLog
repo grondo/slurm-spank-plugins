@@ -1,3 +1,9 @@
+2009-11-05 Mark Grondona <mgrondona@llnl.gov>
+
+	* cpuset/cpuset.c, cpuset/slurm.c, cpuset/slurm.h :
+	  Use slurm_load_job in preference to slurm_load_jobs where
+	  appropriate. 
+
 2009-10-30 Matthieu Hautreux <matthieu.hautreux@cea.fr>
 
 	* : tag v0.8
