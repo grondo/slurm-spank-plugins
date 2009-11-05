@@ -1,5 +1,7 @@
 2009-11-05 Mark Grondona <mgrondona@llnl.gov>
 
+	* : tag v0.8
+
 	* auto-affinity.c, cpuset/cpuset.c, cpuset/pam_slurm_cpuset.c :
 	  Handle new job_resources_t member of job_info_t structure.
 
@@ -8,8 +10,6 @@
 	  appropriate. 
 
 2009-10-30 Matthieu Hautreux <matthieu.hautreux@cea.fr>
-
-	* : tag v0.8
 	
 	* setsched.c : add setsched plugin which enables to enforce
 	  a particular kernel scheduling policy for tasks spawned

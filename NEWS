@@ -1,3 +1,10 @@
+Version 0.8 (2009-11-05):
+ - Added setsched plugin (Mattheiu Hautreux)
+ - Adapt existing plugins to new API in SLURM-2.1.0.
+
+Version 0.7 (2009-05-12):
+ - Added statfs(1) after mount in private-mount plugin.
+
 Version 0.6 (2009-04-23):
  - Added private-mount plugin (llnl subpackage).
 
