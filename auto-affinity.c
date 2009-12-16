@@ -330,7 +330,8 @@ static int query_ncpus_per_node (spank_t sp)
         job_info_t *j = &msg->job_array[i];
 
         if (j->job_id == jobid) {
-#if (SLURM_API_VERSION >= SLURM_VERSION_NUM(2,1,0))
+#if ((SLURM_VERSION && SLURM_VERSION >= SLURM_VERSION_NUM(2,1,0)) || \
+     SLURM_API_VERSION >= SLURM_VERSION_NUM(21,0,0))
             job_resources_t *jres = j->job_resrcs;
             int nodeid = get_nodeid (sp);
 

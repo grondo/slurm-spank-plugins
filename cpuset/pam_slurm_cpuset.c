@@ -227,7 +227,8 @@ int hostname_hostid (const char *host, const char *nodes)
 
 int cpus_on_node (job_info_t *j, const char *host)
 {
-#if (SLURM_API_VERSION >= SLURM_VERSION_NUM(2,1,0))
+#if ((SLURM_VERSION && SLURM_VERSION >= SLURM_VERSION_NUM(2,1,0)) || \
+     SLURM_API_VERSION >= SLURM_VERSION_NUM(21,0,0))
     return slurm_job_cpus_allocated_on_node (j->job_resrcs, host);
 #else /* SLURM_VERSION < 2.1.0 */
     int i;
