@@ -26,6 +26,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dlfcn.h>
+#include <setjmp.h> /* need longjmp for lua_atpanic */
+#include <glob.h>
 
 #include <slurm/spank.h>
 #include <lua.h>
@@ -64,6 +66,11 @@ struct lua_script_option {
  */
 static lua_State *L = NULL;
 static List script_option_list = NULL;
+
+/*
+ *  Tell lua_atpanic where to longjmp on exceptions:
+ */
+static jmp_buf panicbuf;
 
 /*
  *  Lua scripts pass string versions of spank_item_t to get/set_time.
@@ -141,6 +148,7 @@ static int lua_script_rc (lua_State *L)
     lua_pop (L, 0);
     return (rc);
 }
+
 
 static spank_t lua_getspank (lua_State *L, int index)
 {
@@ -489,6 +497,9 @@ static struct lua_script_option *lua_script_option_create (lua_State *L, int i)
 {
     struct lua_script_option *o = malloc (sizeof (*o));
 
+    if (o == NULL)
+        luaL_error (L, "Unable to create lua script option: Out of memory");
+
     o->s_opt.cb = (spank_opt_cb_f) lua_spank_option_callback;
     o->L = L;
 
@@ -574,20 +585,10 @@ static void lua_script_option_destroy (struct lua_script_option *o)
     free (o);
 }
 
-
-static int l_spank_option_register (lua_State *L)
+static int lua_script_option_register (lua_State *L, spank_t sp, int index)
 {
-    spank_t sp;
-    int err;
-    struct lua_script_option *opt;
-
-    sp = lua_getspank (L, 1);
-    if (!lua_istable (L, 2))
-        return luaL_error (L,
-                "Expected table argument to spank_option_register");
-
-    opt = lua_script_option_create (L, 2);
-    lua_pop (L, 2);
+    spank_err_t err;
+    struct lua_script_option *opt = lua_script_option_create (L, index);
 
     if (!script_option_list)
         script_option_list = list_create ((ListDelF)lua_script_option_destroy);
@@ -600,6 +601,42 @@ static int l_spank_option_register (lua_State *L)
         return l_spank_error (L, err);
 
     lua_pushboolean (L, 1);
+    return (1);
+}
+
+static int l_spank_option_register (lua_State *L)
+{
+    int rc;
+    spank_t sp;
+
+    sp = lua_getspank (L, 1);
+    if (!lua_istable (L, 2))
+        return luaL_error (L,
+                "Expected table argument to spank_option_register");
+
+    rc = lua_script_option_register (L, sp, 2);
+    lua_pop (L, 2);
+
+    return (rc);
+}
+
+static int l_spank_context (lua_State *L)
+{
+    switch (spank_context ()) {
+    case S_CTX_LOCAL:
+        lua_pushstring (L, "local");
+        break;
+    case S_CTX_REMOTE:
+        lua_pushstring (L, "remote");
+        break;
+    case S_CTX_ALLOCATOR:
+        lua_pushstring (L, "allocator");
+        break;
+    case S_CTX_ERROR:
+        lua_pushstring (L, "error");
+        break;
+    }
+
     return (1);
 }
 
@@ -620,9 +657,10 @@ static const struct luaL_Reg spank_functions [] = {
 };
 
 
-static int lua_spank_table_create (lua_State *L, spank_t sp)
+static int lua_spank_table_create (lua_State *L, spank_t sp, int ac, char **av)
 {
     const char *str;
+    int i;
 
     lua_newtable (L);
     luaL_register (L, NULL, spank_functions);
@@ -632,15 +670,26 @@ static int lua_spank_table_create (lua_State *L, spank_t sp)
     lua_pushlightuserdata (L, sp);
     lua_setfield (L, -2, SPANK_REFNAME);
 
+    l_spank_context (L);
+    lua_setfield (L, -2, "context");
+
     if (spank_get_item (sp, S_SLURM_VERSION, &str) == ESPANK_SUCCESS) {
         lua_pushstring (L, str);
         lua_setfield (L, -2, "slurm_version");
     }
 
+    lua_newtable (L);
+    for (i = 1; i < ac; i++) {
+        lua_pushstring (L, av[i]);
+        lua_rawseti (L, -2, i);
+    }
+    lua_setfield (L, -2, "args");
+
     return (0);
 }
 
-static int lua_spank_call (lua_State *L, spank_t sp, const char *fn)
+static int lua_spank_call (lua_State *L, spank_t sp, const char *fn,
+        int ac, char **av)
 {
 	/*
 	 * Missing functions are not an error
@@ -652,7 +701,7 @@ static int lua_spank_call (lua_State *L, spank_t sp, const char *fn)
     /*
      * Create spank object to pass to spank functions
      */
-    lua_spank_table_create (L, sp);
+    lua_spank_table_create (L, sp, ac, av);
 
     if (lua_pcall (L, 1, 1, 0)) {
 		slurm_error ("spank/lua: %s: %s", fn, lua_tostring (L, -1));
@@ -717,6 +766,50 @@ static int SPANK_table_create (lua_State *L)
     return (0);
 }
 
+int load_spank_options_table (lua_State *L, spank_t sp)
+{
+    int t;
+
+    lua_getglobal (L, "spank_options");
+    if (lua_isnil (L, -1))
+        return (0);
+
+    /*
+     *  Iterate through spank_options table, which should
+     *   be a table of spank_option entries
+     */
+    t = lua_gettop (L);
+    lua_pushnil (L);  /* push starting "key" on stack */
+    while (lua_next (L, t) != 0) {
+        /*
+         *  If lua_script_option_register() returns 2, then it has
+         *   pushed 2 args on the stack and thus has failed. We
+         *   don't need to return the failure message back to SLURM,
+         *   that has been printed by lua, but we pop the stack and
+         *   return < 0 so that SLURM can detect failure.
+         */
+        if (lua_script_option_register (L, sp, -1) > 1) {
+            lua_pop (L, -1);  /* pop everything */
+            return (-1);
+        }
+
+        /*  On success, lua_script_option_register pushes a boolean onto
+         *   the stack, so we need to pop 2 items: the boolean and
+         *   the spank_option table itself. This leaves the 'key' on
+         *   top for lua_next().
+         */
+        lua_pop (L, 2);
+    }
+    lua_pop (L, 1); /* pop 'spank_options' table */
+
+    return (0);
+}
+
+int spank_atpanic (lua_State *L)
+{
+    longjmp (panicbuf, 0);
+}
+
 int slurm_spank_init (spank_t sp, int ac, char *av[])
 {
 	if (ac == 0) {
@@ -724,6 +817,11 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
 		return (-1);
 	}
 
+    /*
+     *  dlopen liblua to ensure that symbols from that lib are
+     *   available globally (so lua doesn't fail to dlopen its
+     *   DSOs
+     */
 	if (!dlopen ("liblua.so", RTLD_NOW | RTLD_GLOBAL)) {
 		slurm_error ("spank/lua: Failed to open liblua.so");
 		return (-1);
@@ -736,14 +834,38 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
 		return (-1);
 	}
 
+    /*
+     *  Set up handler for lua_atpanic() so lua doesn't exit() on us.
+     */
+    lua_atpanic (L, spank_atpanic);
+    if (setjmp (panicbuf)) {
+        slurm_error ("spank/lua: %s: %s: %s", av[0], lua_tostring (L, -1));
+        return (-1);
+    }
+
+    /*
+     *  Create the global SPANK table
+     */
     SPANK_table_create (L);
 
+    /*
+     *  Compile the lua script
+     */
 	if (lua_pcall (L, 0, 0, 0)) {
 		slurm_error ("spank/lua: %s", lua_tostring (L, -1));
 		return (-1);
 	}
 
-    return lua_spank_call (L, sp, "slurm_spank_init");
+    /*
+     *  Load any options exported via a spank_options table
+     */
+    if (load_spank_options_table (L, sp) < 0)
+        return (-1);
+
+    /*
+     *  Call slurm_spank_init from the lua script
+     */
+    return lua_spank_call (L, sp, "slurm_spank_init", ac, av);
 }
 
 /*****************************************************************************
@@ -753,42 +875,44 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
  ****************************************************************************/
 int slurm_spank_init_post_opt (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_init_post_opt");
+    return lua_spank_call (L, sp, "slurm_spank_init_post_opt", ac, av);
 }
 
 int slurm_spank_local_user_init (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_local_user_init");
+    return lua_spank_call (L, sp, "slurm_spank_local_user_init", ac, av);
 }
 
 int slurm_spank_user_init (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_user_init");
+    return lua_spank_call (L, sp, "slurm_spank_user_init", ac, av);
 }
 
 int slurm_spank_task_init_privileged (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_task_init_privileged");
+    return lua_spank_call (L, sp, "slurm_spank_task_init_privileged", ac, av);
 }
 
 int slurm_spank_task_init (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_task_init");
+    return lua_spank_call (L, sp, "slurm_spank_task_init", ac, av);
 }
 
 int slurm_spank_task_post_fork (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_task_post_fork");
+    return lua_spank_call (L, sp, "slurm_spank_task_post_fork", ac, av);
 }
 
 int slurm_spank_task_exit (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_task_exit");
+    return lua_spank_call (L, sp, "slurm_spank_task_exit", ac, av);
 }
 
 int slurm_spank_exit (spank_t sp, int ac, char *av[])
 {
-    int rc = lua_spank_call (L, sp, "slurm_spank_exit");
+    int rc = lua_spank_call (L, sp, "slurm_spank_exit", ac, av);
+    if (script_option_list)
+        list_destroy (script_option_list);
     lua_close (L);
     return (rc);
 }
