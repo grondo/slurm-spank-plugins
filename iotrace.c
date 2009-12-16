@@ -38,7 +38,7 @@ SPANK_PLUGIN(iotrace, 1)
 #define IOTRACE_ENABLE  1
 
 static int enabled = 0;
-static char *flags = "";
+static char *flags = NULL;
 
 static int _opt_process (int val, const char *optarg, int remote);
 
@@ -80,6 +80,7 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
 	char nbuf [4096], obuf [4096];
 	char label [64];
 	const char *preload = "libplasticfs.so";
+    const char *lflags = flags ? flags : "";
 
 	if (!enabled)
 		return (0);
@@ -94,8 +95,9 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
 
     /* prepend to PLASTICFS (with a pipe) */
     _iotrace_label (sp, label, sizeof (label));
-	if (spank_getenv (sp, "PLASTICFS", obuf, sizeof (obuf)) == ESPANK_SUCCESS) 
-		snprintf (nbuf, sizeof (nbuf), "log -  %s %s | %s", label, flags, obuf);
+	if (spank_getenv (sp, "PLASTICFS", obuf, sizeof (obuf)) == ESPANK_SUCCESS)
+		snprintf (nbuf, sizeof (nbuf), "log -  %s %s | %s",
+                label, lflags, obuf);
 	else
 		snprintf (nbuf, sizeof (nbuf), "log -  %s %s", label, flags);
 
@@ -111,13 +113,20 @@ static int _opt_process (int val, const char *optarg, int remote)
         case IOTRACE_ENABLE:
             enabled = 1;
             if (optarg)
-                flags = optarg;
+                flags = strdup (optarg);
             break;
         default:
             slurm_error ("Ignoring unknown iotrace option value %d\n", val);
             break;
 	} 
 
+    return (0);
+}
+
+int slurm_spank_exit (spank_t sp, int ac, char **av)
+{
+    if (flags)
+        free (flags);
     return (0);
 }
 
