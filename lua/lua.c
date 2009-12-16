@@ -64,7 +64,7 @@ struct lua_script_option {
 /*
  *  Global lua State and script_option_list declarations:
  */
-static lua_State *L = NULL;
+static lua_State *global_L = NULL;
 static List script_option_list = NULL;
 
 /*
@@ -691,12 +691,12 @@ static int lua_spank_table_create (lua_State *L, spank_t sp, int ac, char **av)
 static int lua_spank_call (lua_State *L, spank_t sp, const char *fn,
         int ac, char **av)
 {
-	/*
-	 * Missing functions are not an error
-	 */
-	lua_getglobal (L, fn);
-	if (lua_isnil (L, -1))
-		return 0;
+    /*
+     * Missing functions are not an error
+     */
+    lua_getglobal (L, fn);
+    if (lua_isnil (L, -1))
+        return 0;
 
     /*
      * Create spank object to pass to spank functions
@@ -704,7 +704,7 @@ static int lua_spank_call (lua_State *L, spank_t sp, const char *fn,
     lua_spank_table_create (L, sp, ac, av);
 
     if (lua_pcall (L, 1, 1, 0)) {
-		slurm_error ("spank/lua: %s: %s", fn, lua_tostring (L, -1));
+        slurm_error ("spank/lua: %s: %s", fn, lua_tostring (L, -1));
         return (-1);
     }
 
@@ -810,62 +810,209 @@ int spank_atpanic (lua_State *L)
     longjmp (panicbuf, 0);
 }
 
+struct lua_script {
+    char *path;
+    lua_State *L;
+    int ref;
+};
+
+List lua_script_list = NULL;
+
+static struct lua_script * lua_script_create (lua_State *L, const char *path)
+{
+    struct lua_script *script = malloc (sizeof (*script));
+
+    script->path = strdup (path);
+    script->L = lua_newthread (L);
+    script->ref = luaL_ref (L, LUA_REGISTRYINDEX);
+
+    /*
+     *  Now we need to redefine the globals table for this script/thread.
+     *   this will keep each script's globals in a private namespace,
+     *   (including all the spank callback functions).
+     *   To do this, we define a new table in the current thread's
+     *   state, and give that table's metatable an __index field that
+     *   points to the real globals table, then replace this threads
+     *   globals table with the new (empty) table.
+     *
+     */
+
+    /*  New globals table */
+    lua_newtable (script->L);
+
+    /*  metatable for table on top of stack */
+    lua_newtable (script->L);
+
+    /*
+     *  Now set metatable->__index to point to the real globals
+     *   table. This way Lua will check the root global table
+     *   for any nonexistent items in the current thread's global
+     *   table.
+     */
+    lua_pushstring (script->L, "__index");
+    lua_pushvalue (script->L, LUA_GLOBALSINDEX);
+    lua_settable (script->L, -3);
+
+    /*  Now set metatable for the new globals table */
+    lua_setmetatable (script->L, -2);
+
+    /*  And finally replace the globals table with the (empty)  table
+     *   now at top of the stack
+     */
+    lua_replace (script->L, LUA_GLOBALSINDEX);
+
+    return script;
+}
+
+static void lua_script_destroy (struct lua_script *s)
+{
+    free (s->path);
+    luaL_unref (global_L, LUA_REGISTRYINDEX, s->ref);
+    /* Only call lua_close() on the main lua state  */
+    free (s);
+}
+
+static int ef (const char *p, int eerrno)
+{
+    slurm_error ("spank/lua: glob: %s: %s\n", p, strerror (eerrno));
+    return (-1);
+}
+
+List lua_script_list_create (lua_State *L, const char *pattern)
+{
+    glob_t gl;
+    size_t i;
+    List l = NULL;
+    char *copy = NULL;
+
+    if (pattern == NULL)
+        return (NULL);
+
+    int rc = glob (pattern, GLOB_ERR, ef, &gl);
+    switch (rc) {
+        case 0:
+            l = list_create ((ListDelF) lua_script_destroy);
+            for (i = 0; i < gl.gl_pathc; i++) {
+                struct lua_script * s;
+                s = lua_script_create (L, gl.gl_pathv[i]);
+                if (s == NULL) {
+                    slurm_error ("lua_script_create failed for %s.",
+                            gl.gl_pathv[i]);
+                    continue;
+                }
+                list_push (l, s);
+            }
+            break;
+        case GLOB_NOMATCH:
+            break;
+        case GLOB_NOSPACE:
+            slurm_error ("spank/lua: glob(3): Out of memory");
+        case GLOB_ABORTED:
+            slurm_verbose ("spank/lua: cannot read dir %s: %m", pattern);
+            break;
+        default:
+            slurm_error ("Unknown glob(3) return code = %d", rc);
+            break;
+    }
+
+    globfree (&gl);
+
+    return l;
+}
+
+
 int slurm_spank_init (spank_t sp, int ac, char *av[])
 {
-	if (ac == 0) {
-		slurm_error ("spank/lua: Requires at least 1 arg");
-		return (-1);
-	}
+    ListIterator i;
+    struct lua_script *script;
+    int rc;
+
+    if (ac == 0) {
+        slurm_error ("spank/lua: Requires at least 1 arg");
+        return (-1);
+    }
 
     /*
      *  dlopen liblua to ensure that symbols from that lib are
      *   available globally (so lua doesn't fail to dlopen its
      *   DSOs
      */
-	if (!dlopen ("liblua.so", RTLD_NOW | RTLD_GLOBAL)) {
-		slurm_error ("spank/lua: Failed to open liblua.so");
-		return (-1);
-	}
+    if (!dlopen ("liblua.so", RTLD_NOW | RTLD_GLOBAL)) {
+        slurm_error ("spank/lua: Failed to open liblua.so");
+        return (-1);
+    }
 
-	L = luaL_newstate ();
-    luaL_openlibs (L);
-	if (luaL_loadfile (L, av[0])) {
-		slurm_error ("spank/lua: %s", lua_tostring (L, -1));
-		return (-1);
-	}
+    global_L = luaL_newstate ();
+    luaL_openlibs (global_L);
 
     /*
      *  Set up handler for lua_atpanic() so lua doesn't exit() on us.
      */
-    lua_atpanic (L, spank_atpanic);
+    lua_atpanic (global_L, spank_atpanic);
     if (setjmp (panicbuf)) {
-        slurm_error ("spank/lua: %s: %s: %s", av[0], lua_tostring (L, -1));
+        slurm_error ("spank/lua: %s: %s: %s",
+                av[0], lua_tostring (global_L, -1));
         return (-1);
     }
 
     /*
      *  Create the global SPANK table
      */
-    SPANK_table_create (L);
+    SPANK_table_create (global_L);
 
-    /*
-     *  Compile the lua script
-     */
-	if (lua_pcall (L, 0, 0, 0)) {
-		slurm_error ("spank/lua: %s", lua_tostring (L, -1));
-		return (-1);
-	}
+    lua_script_list = lua_script_list_create (global_L, av[0]);
+    if (lua_script_list == NULL) {
+        slurm_verbose ("spank/lua: No files found in %s\n", av[0]);
+        return (0);
+    }
 
-    /*
-     *  Load any options exported via a spank_options table
-     */
-    if (load_spank_options_table (L, sp) < 0)
-        return (-1);
 
-    /*
-     *  Call slurm_spank_init from the lua script
-     */
-    return lua_spank_call (L, sp, "slurm_spank_init", ac, av);
+    i = list_iterator_create (lua_script_list);
+    while ((script = list_next (i))) {
+
+        slurm_info ("luaL_loadfile (%s)", script->path);
+        if (luaL_loadfile (script->L, script->path)) {
+            slurm_error ("spank/lua: %s", lua_tostring (script->L, -1));
+            return (-1);
+        }
+
+        /*
+         *  Compile the lua script
+         */
+        if (lua_pcall (script->L, 0, 0, 0)) {
+            slurm_error ("spank/lua: %s", lua_tostring (script->L, -1));
+            return (-1);
+        }
+
+        /*
+         *  Load any options exported via a spank_options table
+         */
+        if (load_spank_options_table (script->L, sp) < 0)
+            return (-1);
+
+        /*
+         *  Call slurm_spank_init from the lua script
+         */
+        rc = lua_spank_call (script->L, sp, "slurm_spank_init", ac, av);
+    }
+    list_iterator_destroy (i);
+    return rc;
+}
+
+static int call_foreach (List l, spank_t sp, const char *name,
+        int ac, char *av[])
+{
+    int rc = 0;
+    struct lua_script *script;
+    ListIterator i = list_iterator_create (l);
+
+    while ((script = list_next (i))) {
+        if (lua_spank_call (script->L, sp, name, ac, av) < 0)
+            rc = -1;
+    }
+
+    list_iterator_destroy (i);
+    return (rc);
 }
 
 /*****************************************************************************
@@ -875,45 +1022,54 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
  ****************************************************************************/
 int slurm_spank_init_post_opt (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_init_post_opt", ac, av);
+    return call_foreach (lua_script_list, sp,
+            "slurm_spank_init_post_opt", ac, av);
 }
 
 int slurm_spank_local_user_init (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_local_user_init", ac, av);
+    return call_foreach (lua_script_list, sp,
+            "slurm_spank_local_user_init", ac, av);
 }
 
 int slurm_spank_user_init (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_user_init", ac, av);
+    return call_foreach (lua_script_list, sp,
+            "slurm_spank_user_init", ac, av);
 }
 
 int slurm_spank_task_init_privileged (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_task_init_privileged", ac, av);
+    return call_foreach (lua_script_list, sp,
+            "slurm_spank_task_init_privileged", ac, av);
 }
 
 int slurm_spank_task_init (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_task_init", ac, av);
+    return call_foreach (lua_script_list, sp,
+            "slurm_spank_task_init", ac, av);
 }
 
 int slurm_spank_task_post_fork (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_task_post_fork", ac, av);
+    return call_foreach (lua_script_list, sp,
+            "slurm_spank_task_post_fork", ac, av);
 }
 
 int slurm_spank_task_exit (spank_t sp, int ac, char *av[])
 {
-    return lua_spank_call (L, sp, "slurm_spank_task_exit", ac, av);
+    return call_foreach (lua_script_list, sp, "slurm_spank_task_exit", ac, av);
 }
 
 int slurm_spank_exit (spank_t sp, int ac, char *av[])
 {
-    int rc = lua_spank_call (L, sp, "slurm_spank_exit", ac, av);
+    int rc = call_foreach (lua_script_list, sp, "slurm_spank_exit", ac, av);
+
+    if (lua_script_list)
+        list_destroy (lua_script_list);
     if (script_option_list)
         list_destroy (script_option_list);
-    lua_close (L);
+    lua_close (global_L);
     return (rc);
 }
 
