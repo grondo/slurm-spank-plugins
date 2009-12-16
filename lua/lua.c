@@ -136,16 +136,17 @@ static int l_spank_error (lua_State *L, spank_err_t e)
 
 /*
  *  Get lua function return code.
- *  Functions must return nil for failure, anything else
- *   indicates success.
+ *  Functions must return -1 for failure, anything else
+ *   indicates success (Including no return code, which
+ *   would be nil at top of stack created by lua_pcall()).
+ *
  */
 static int lua_script_rc (lua_State *L)
 {
     int rc = 0;
-    if (lua_isnil (L, -1))
-        rc = -1;
     if (lua_isnumber (L, -1))
         rc = lua_tonumber (L, -1);
+
     /* Clean up the stack */
     lua_pop (L, 0);
     return (rc);
