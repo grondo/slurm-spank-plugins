@@ -1,0 +1,369 @@
+.TH "spank-lua" "8" "2009-12-14" "spank-lua" "lua bindings for SLURM spank framework"
+
+.SH "NAME"
+\fBspank-lua\fR \- Lua bindings for SLURM in a SPANK plugin
+
+.SH "DESCRIPTION"
+
+This manual page describes the \fBspank-lua\fR lua bindings for
+SLURM, which allow lua scripts to be embedded in SLURM job launch
+code via the \fBspank\fR(8) interface.
+
+The \fBlua.so\fR spank plugin for SLURM allows lua scripts to take the
+place of compiled C shared objects in the SLURM \fBspank\fR(8) framework.
+All the functionality of the C SPANK API is exported to lua via this plugin,
+which loads one or scripts and executes lua functions during the appropriate
+SLURM phase (as described in the \fBspank\fR(8) manpage).
+
+This plugin provides SLURM administrators with the ability to easily
+expose new options to the SLURM user commands \fBsrun\fR(1),
+\fBsalloc\fR(1), and \fBsbatch\fR(1) commands, modify the SLURM job launch
+environment, and execute custom code from within the context of SLURM
+all with the power of a fast interpreted language. For one example of
+\fBspank-lua\fR usage scenario, see the \fIEXAMPLES\fR section below.
+
+.SH "CONFIGURATION"
+
+The lua SPANK plugin is configured like other SPANK plugins by adding
+a line to the plugstack.conf like:
+.nf
+
+ required lua.so [\fIGLOB\fR] [\fIOPTIONS\fR]...
+
+.fi
+
+where \fIGLOB\fR is a path to a lua script to load or a glob which may
+load multiple lua scripts, and \fIOPTIONS\fR is a space-separated list
+of extra options to pass to all lua scripts loaded by this line. These
+options are passed to lua scripts in the \fBargs\fR member of the
+\fBspank\fR handle. For example:
+.nf
+
+  required lua.so /etc/slurm/lua.d/* verbose=1
+
+.fi
+
+Would load all files in /etc/slurm/lua.d and would pass an
+\fBargs\fR table in the \fBspank\fR handle passed to lua scripts
+such that
+.nf
+
+  \fBspank.args\fR = { "verbose=1" }
+
+.fi
+
+.SH "SPANK LUA API"
+
+As with compiled spank plugins, spank lua scripts may be called
+from one or more of many contexts during the allocation, launch,
+and exit of a SLURM job. Which of these contexts a spank-lua
+script is called from depends on which of the callbacks listed
+in the \fBspank\fR(8) manpage are defined by the loaded script.
+These callbacks are listed here by name for reference, but please
+see \fBspank\fR(8) manpage for more information on the context
+of each hook listed:
+.TP 8
+.B slurm_spank_init
+Called at initialization in all contexts.
+.TP
+.B slurm_spank_init_post_opt
+Called post option processing in all contexts.
+.TP
+.B slurm_spank_local_user_init
+Called in local context post-job-allocation but before job launch.
+.TP
+.B slurm_spank_user_init
+Called after privileges have been temporarily dropped on remote
+nodes (called once per node).
+.TP
+.B slurm_spank_task_init_privileged
+Called for each task just after fork, but before elevated privileges
+are dropped permanently.
+.TP
+.B slurm_spank_task_init
+Called once for each task just before execve(2).
+.TP
+.B slurm_spank_task_post_fork
+Called for each task from parent process after fork(2) is complete.
+Due to the fact that \fBslurmd\fR does not exec any tasks until all
+tasks have completed fork(2), this call is guaranteed to run before
+the user task is executed. (remote context only)
+.TP
+.B slurm_spank_task_exit
+Called for each task as its exit status is collected by SLURM.
+(remote context only)
+.TP
+.B slurm_spank_exit
+Called once just before \fBslurmstepd\fR exits in remote context.
+In local context, called before \fBsrun\fR exits.
+.LP
+One or more of these hooks may exist in each lua script
+loaded by the \fBspank-lua\fR plugin. Each hook is run at the
+appropriate time, and is passed a single argument, the \fBspank\fR
+handle which is described below.
+.LP
+These scripts are allowed to return a single error code back
+to SLURM. A value of -1 indicates failure (See \fBSPANK.FAILURE\fR
+below), and anything else is considered to indicate success. No
+return value is accepted is considered to indicate success.
+
+.SH "SPANK-LUA HANDLE"
+
+.LP
+Each time one of the spank functions is called from a lua
+script, the spank-lua plugin sets up a \fBspank\fR table to pass
+as the first and only argument to that function. This table
+serves as the spank handle for the duration of the call, and
+exports several methods that may be used by the script, including
+.TP 8
+.B context
+The value of \fBspank.context\fR indicates the current context in which
+the spank plugin is running, and may have the string value
+"\fIlocal\fR", "\fIallocator\fR", or "\fIremote\fR".
+.TP
+.B args
+If any extra arguments were included in the \fBplugstack.conf\fR entry
+for \fBlua.so\fR, these are collected and included in \fBspank.args\fR
+array. (Remember that lua arrays are indexed starting at 1, not 0).
+.TP
+.B slurm_version
+Version of SLURM as a string, e.g. "\fB2.1.0\fR".
+.TP
+.BI get_item " (ITEM)"
+Return the spank item indicated by \fIITEM\fR, where
+ITEM is the string representation of the spank_item_t enumerated type
+as named in slurm/spank.h. (For example, the SLURM job stepid
+would be obtained via
+.nf
+
+         local stepid = spank:get_item ("\fBS_JOB_STEPID\fR")
+
+.fi
+For items that return multiple values, spank-lua will return a table,
+for example, spank:get_item ("S_JOB_ENV") returns a lua table of
+the job environment with t[name] = val  for each environment entry
+\fBname\fR=\fBval\fR.
+.TP
+.BI getenv " (name)"
+Return the value of environment variable \fIname\fR from the job's
+environment. As with regular \fBspank\fR  plugins, this call is only
+necessary in remote context, since the job's environment in local
+context can be obtained via os.getenv(). For example:
+.nf
+
+        local ldpath = spank:getenv ("LD_LIBRARY_PATH")
+.fi
+.TP
+.BI setenv " (name, value, [overwrite])"
+Set the environment variable \fIname\fR to \fIvalue\fR in the job's
+environment, overwriting the old value of \fI name\fR if the optional
+boolean parameter \fIoverwrite\fR is true. For example:
+.nf
+
+        if not spank:setenv ("LD_LIBRARY_PATH", ldpath, 1) then
+           print ("Failed to set LD_LIBRARY_PATH")
+        end
+.fi
+.TP
+.BI unsetenv " (name)"
+Unset the environment variable \fIname\fR from the job's environment
+if it exists.
+.TP
+.BI job_control_setenv " (name, value, [overwrite])"
+Like \fBsetenv\fR, but for the \fIjob control\fR environment, which
+is passed to the SLURM control scripts like epilog, prolog, SlurmctldProlog,
+and SlurmctldEpilog. Variables set in this way have the string SPANK_
+prepended to them before they are set in the environment of these
+scripts.
+.TP
+.BI job_control_getenv " (name)"
+Same as \fBgetenv\fR, but for the job control environment.
+.TP
+.BI job_control_unsetenv " (name)"
+Same as \fBunsetenv\fR, but for the job control environment.
+.TP
+.BI register_option " (spankopt)"
+Registers a single option \fIspankopt\fR to SLURM. See \fISPANK OPTIONS\fR
+below for the format of the \fIspankopt\fR parameter. This method is
+only valid from the \fBslurm_spank_init\fR hook in local and allocator
+context.
+.LP
+In addition to the \fBspank\fR handle passed to spank-lua functions,
+spank-lua scripts also have access to utility functions and values in
+a global \fBSPANK\fR table. The members of this table include:
+.TP 8
+.B SPANK.log_*
+Utility functions for logging messages using SLURM's log facility.
+Included log functions are \fBlog_error\fB, \fBlog_info\fR, \fBlog_verbose\fR,
+\fBlog_debug\fR. These functions all take a lua format string and a
+variable number of arguments, for example:
+.nf
+
+        SPANK.log_error ("%s: %s", myname, errormsg)
+
+.fi
+.TP
+.B SPANK.SUCCESS
+Return value to indicate a successful return from a spank callback. That is,
+lua functions should return \fBSPANK.SUCCESS\fR on successful completion.
+.TP
+.B SPANK.FAILURE
+Return value indicating failure of a spank-lua function.
+.LP
+
+.SH "SPANK OPTIONS"
+Exporting options to \fBsrun\fR(1), \fRsalloc\fR(1) and \fBsbatch\fR(1)
+may be accomplished with spank-lua in a similar manner as a normal \fBspank\fR
+plugin. Each option to be exported is set in a lua table such as:
+.nf
+
+    spankopt = {
+        name =     STRING,
+        usage =    STRING,
+        val =      NUM,
+        cb =       STRING,
+        has_arg =  BOOLEAN,
+        arginfo =  STRING,
+    }
+
+.fi
+Where the meaning of each member of the table has the same meaning as the
+struct \fBspank_option\fR members described in \fBspank\fR(8) manpage. That
+is:
+.TP 8
+.B name
+is the name of the option. That is the option will be specified by users
+as --\fBname\fR. This is a required parameter.
+.TP
+.B usage
+is a short description of the option suitable for \-\-help output. This
+is a required parameter.
+.TP
+.B  val
+A plugin\-local value which is returned to the option callback function.
+This is a required parameter.
+.TP
+.B cb
+Is the name of a global function to use as the callback function when
+an option is invoked by the user. The option callback is invoked in both
+local/allocator and remote contexts, and must take three arguments like:
+.nf
+
+    function cb (val, optarg, remote)
+
+.fi
+Where val is the \fBspankopt.val\fR used when registering the option,
+\fBoptarg\fR is the argument (if any) passed to the option, and
+\fRremote\fR is a boolean indicating whether the option callback is
+being made in local/allocator or remote context.
+.LP
+Options may be registered by spank-lua scripts either by use of
+the spank:register_option() method from \fBslurm_spank_init\fR, or
+by exporting a global \fBspank_options\fR table. The \fBspank_options\fR
+table must be a list of spank option tables as described above,
+for example:
+.nf
+
+    spank_options = {
+        {
+            name =    "test",
+            usage =   "A test option for spank-lua",
+            val =     1,
+            cb =      "option_handler",
+        }
+    }
+
+.fi
+
+.SH EXAMPLE
+
+The following example \fBspank-lua\fR script exports an environment
+varable to the SLURM prolog and epilog to control the current value
+of memory overcommit on the nodes of the job. Users can enable this
+optional behavior by using the new commandline option --no-memory-overcommit.
+
+.nf
+.sp
+    -- Global spank_options table:
+    --
+    \fBspank_options\fR = {
+       {
+         name = "no-memory-overcommit",
+         usage = "Disable memory overcommit on nodes of SLURM job",
+         cb =    "opt_handler"
+       }
+    }
+.sp
+    got_option = false
+    function opt_handler (v, arg, remote) got_option = true end
+.sp
+    function \fBslurm_spank_init_post_opt\fR (spank)
+       --
+       --  Return success if we're not in local context, or the user
+       --   did not specify --no-memory-overcommit.
+       --
+       if \fBspank.context\fR == "remote" or not got_option then
+           return \fISPANK.SUCCESS\fR
+       end
+
+       \fBSPANK.log_info\fR ("slurm_spank_init_post_opt")
+
+       --
+       --   Set SPANK_NO_OVERCOMMIT in the "job control" environment
+       --
+       local rc, msg = \fBspank:job_control_setenv\fR ("NO_OVERCOMMIT", 1, 1)
+
+       --
+       --  Like other lua functions, spank methods return nil and an
+       --   error string on failure.
+       --
+       if rc == nil then
+           \fBSPANK.log_error\fR ("Failed to propagate NO_OVERCOMMIT: %s", msg)
+           return \fISPANK.FAILURE\fR
+       end
+       return \fISPANK.SUCCESS\fR
+    end
+.sp
+.fi
+.LP
+The corresponding section of the SLURM prolog might then look like:
+
+.nf
+
+ if test -n "$SPANK_NO_OVERCOMMIT"; then
+   echo 2 > /proc/sys/vm/overcommit_memory
+ fi
+
+
+.fi
+(Corresponding code to reset the overcommit_memory value in the epilog
+ should also be included in any full-featured solution)
+
+.LP
+The \fBsrun\fR command would now present a new option to the user:
+
+.nf
+
+ $ srun --help
+  ...
+
+ Options provided by plugins:
+  --no-memory-overcommit  Disable memory overcommit on nodes of SLURM job
+
+.fi
+
+.SH COPYRIGHT
+Copyright (C) 2009 Lawrence Livermore National Security, LLC.
+Produced at Lawrence Livermore National Laboratory. UCRL-CODE-235358
+
+This is free software; you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation.
+
+.SH "SEE ALSO"
+.BR spank (8),
+.BR srun (1),
+.BR salloc (1),
+.BR sbatch (1),
+.PP
+\fBhttp://slurm-spank-plugins.googlecode.com/\fR
