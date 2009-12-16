@@ -22,9 +22,11 @@
 %if 0%{?chaos}
 %_with_opt llnl_plugins
 %_with_opt cpuset
+%_with_opt lua
 %else
 %_without_opt llnl_plugins
 %_without_opt cpuset
+%_without_opt lua
 %endif
 
 Name:    
@@ -49,6 +51,10 @@ BuildRequires: pam-devel
 
 %if %{_with llnl_plugins}
 BuildRequires: job
+%endif
+
+%if %{_with lua}
+BuildRequires: lua-devel >= 5.1
 %endif
 
 
@@ -124,6 +130,21 @@ this package.
 
 %endif
 
+%if %{_with lua}
+%package lua
+Summary: lua spank plugin for slurm.
+Group:   System Environment/Base
+Requires:lua >= 5.1
+
+%description lua
+The  lua.so spank plugin for SLURM allows lua scripts to take the
+place of compiled C shared objects in the SLURM spank(8) framework.
+All  the power  of  the  C  SPANK  API is exported to lua via this
+plugin, which loads one or scripts and executes lua functions during
+the  appropriate SLURM phase (as described in the spank(8) manpage).
+
+%endif
+
 %prep
 %setup
 
@@ -146,6 +167,7 @@ make \
   DESTDIR="$RPM_BUILD_ROOT" \
   %{?_with_llnl_plugins:BUILD_LLNL_ONLY=1} \
   %{?_with_cpuset:BUILD_CPUSET=1} \
+  %{?_with_lua:WITH_LUA=1} \
   install
 
 %if %{_with cpuset}
@@ -166,6 +188,11 @@ mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/slurm/plugstack.conf.d
 #echo " required  preserve-env.so" > \
 #     $RPM_BUILD_ROOT/%{_sysconfdir}/slurm/plugstack.conf.d/99-preserve-env
 rm -f $RPM_BUILD_ROOT/%{_libdir}/slurm/preserve-env.so
+
+%if %{_with_lua}
+echo " required  lua.so" > \
+     $RPM_BUILD_ROOT/%{_sysconfdir}/slurm/plugstack.conf.d/99-lua
+%endif
 
 %clean
 rm -rf "$RPM_BUILD_ROOT"
@@ -218,4 +245,10 @@ fi
 %{_mandir}/man8/slurm-cpuset.*
 %endif
 
+
+%if %{_with_lua}
+%files lua
+%{_sysconfdir}/slurm/plugstack.conf.d/99-lua
+%{_libdir}/slurm/lua.so
+%endif
 
