@@ -1,5 +1,3 @@
-CFLAGS   += -I/g/g0/grondo/proj/slurm.git/ -I..
-
 PLUGINS = \
    lua.so \
 
@@ -8,7 +6,7 @@ all: $(PLUGINS)
 .SUFFIXES: .c .o .so
 
 .c.o:
-	$(CC) $(CFLAGS) -o $@ -fPIC -c $<
+	$(CC) -I.. $(CFLAGS) -o $@ -fPIC -c $<
 
 lua.so : lua.o ../lib/list.o
 	$(CC) -shared -o $*.so $^ -llua
