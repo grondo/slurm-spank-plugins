@@ -152,6 +152,7 @@ the  appropriate SLURM phase (as described in the spank(8) manpage).
 make \
   %{?_with_llnl_plugins:BUILD_LLNL_ONLY=1} \
   %{?_with_cpuset:BUILD_CPUSET=1} \
+  %{?_with_lua:WITH_LUA=1} \
   CFLAGS="$RPM_OPT_FLAGS" 
 
 %install
