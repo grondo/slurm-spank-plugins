@@ -37,6 +37,10 @@ ifeq ($(BUILD_CPUSET), 1)
   SUBDIRS += cpuset	
 endif
 
+ifeq ($(WITH_LUA), 1)
+  SUBDIRS += lua
+endif
+
 all: $(PLUGINS) $(LIBRARIES) subdirs
 
 .SUFFIXES: .c .o .so
