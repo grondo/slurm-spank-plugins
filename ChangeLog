@@ -1,3 +1,11 @@
+2009-12-16 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.9.
+
+	* lua/* :
+	  Added lua plugin, which exports spank functionality to
+	  one or more lua scripts.
+
 2009-11-05 Mark Grondona <mgrondona@llnl.gov>
 
 	* : tag v0.8
