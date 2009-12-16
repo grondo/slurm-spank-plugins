@@ -26,8 +26,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dlfcn.h>
-#include <setjmp.h> /* need longjmp for lua_atpanic */
 #include <glob.h>
+#include <setjmp.h> /* need longjmp for lua_atpanic */
+#include <libgen.h> /* basename(3) */
 
 #include <slurm/spank.h>
 #include <lua.h>
@@ -42,7 +43,6 @@ SPANK_PLUGIN (lua, 1)
  *   spank table passed to lua spank functions.
  */
 #define SPANK_REFNAME "spank"
-
 
 /*
  *  This module keeps a list of options provided by the lua
@@ -71,6 +71,8 @@ static List script_option_list = NULL;
  *  Tell lua_atpanic where to longjmp on exceptions:
  */
 static jmp_buf panicbuf;
+static int spank_atpanic (lua_State *L) { longjmp (panicbuf, 0); }
+
 
 /*
  *  Lua scripts pass string versions of spank_item_t to get/set_time.
@@ -149,7 +151,10 @@ static int lua_script_rc (lua_State *L)
     return (rc);
 }
 
-
+/*
+ *  Return spank_t handle as lightuserdata from the spank table
+ *   at index [index] on the Lua stack.
+ */
 static spank_t lua_getspank (lua_State *L, int index)
 {
     spank_t sp;
@@ -163,10 +168,15 @@ static spank_t lua_getspank (lua_State *L, int index)
         return (NULL);
 
     sp = lua_touserdata (L, -1);
+
+    /*  Pop lightuserdata off the stack */
     lua_pop (L, 1);
     return (sp);
 }
 
+/*
+ *  Convert a spank item by name to a spank_item_t enum (as integer).
+ */
 static int name_to_item (const char *name)
 {
     struct s_item_name *s = spank_item_table;
@@ -180,6 +190,10 @@ static int name_to_item (const char *name)
     return (-1);
 }
 
+/*
+ *  Generic function to push a spank item with a numeric representation
+ *   on to the lua stack.
+ */
 static int l_spank_get_item_val (lua_State *L, spank_t sp, spank_item_t item)
 {
     spank_err_t err;
@@ -193,6 +207,10 @@ static int l_spank_get_item_val (lua_State *L, spank_t sp, spank_item_t item)
     return (1);
 }
 
+/*
+ *  Generic function to push a spank item with a string representation
+ *   on to the lua stack.
+ */
 static int
 l_spank_get_item_string (lua_State *L, spank_t sp, spank_item_t item)
 {
@@ -207,6 +225,9 @@ l_spank_get_item_string (lua_State *L, spank_t sp, spank_item_t item)
 
 }
 
+/*
+ *  Return S_JOB_ARGV as an array on the lua stack
+ */
 static int l_spank_get_item_argv (lua_State *L, spank_t sp)
 {
     spank_err_t err;
@@ -225,6 +246,10 @@ static int l_spank_get_item_argv (lua_State *L, spank_t sp)
     return (1);
 }
 
+/*
+ *  Set a single environment entry as an item in the table
+ *   at the top of the stack such that t[NAME] = VALUE.
+ */
 static void set_env_table_entry (lua_State *L, int i, const char *entry)
 {
     const char *val = strchr (entry, '=');
@@ -239,6 +264,9 @@ static void set_env_table_entry (lua_State *L, int i, const char *entry)
     lua_settable (L, i);
 }
 
+/*
+ *  Copy S_JOB_ENV to a table on the Lua stack.
+ */
 static int l_spank_get_item_env (lua_State *L, spank_t sp)
 {
     spank_err_t err;
@@ -259,6 +287,9 @@ static int l_spank_get_item_env (lua_State *L, spank_t sp)
     return (1);
 }
 
+/*
+ *  Copy GID list as array on the Lua stack.
+ */
 static int l_spank_get_item_gids (lua_State *L, spank_t sp)
 {
     spank_err_t err;
@@ -805,11 +836,6 @@ int load_spank_options_table (lua_State *L, spank_t sp)
     return (0);
 }
 
-int spank_atpanic (lua_State *L)
-{
-    longjmp (panicbuf, 0);
-}
-
 struct lua_script {
     char *path;
     lua_State *L;
@@ -945,12 +971,9 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
     global_L = luaL_newstate ();
     luaL_openlibs (global_L);
 
-    /*
-     *  Set up handler for lua_atpanic() so lua doesn't exit() on us.
-     */
     lua_atpanic (global_L, spank_atpanic);
     if (setjmp (panicbuf)) {
-        slurm_error ("spank/lua: %s: %s: %s",
+        slurm_error ("spank/lua: PANIC: %s: %s",
                 av[0], lua_tostring (global_L, -1));
         return (-1);
     }
@@ -966,11 +989,21 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
         return (0);
     }
 
+    /*
+     *  Set up handler for lua_atpanic() so lua doesn't exit() on us.
+     *   This handles errors from outside of protected mode --
+     *   for example when this plugin is processing the global
+     *   spank_options table. The spank_atpanic() function will
+     *   return to the setjmp() point below (thus avoiding Lua's
+     *   call to exit() from its own panic handler). This is basically
+     *   here so that we can use luaL_error() everwhere without
+     *   worrying about the context of the call.
+     */
+    lua_atpanic (global_L, spank_atpanic);
 
     i = list_iterator_create (lua_script_list);
     while ((script = list_next (i))) {
 
-        slurm_info ("luaL_loadfile (%s)", script->path);
         if (luaL_loadfile (script->L, script->path)) {
             slurm_error ("spank/lua: %s", lua_tostring (script->L, -1));
             return (-1);
@@ -979,13 +1012,14 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
         /*
          *  Compile the lua script
          */
-        if (lua_pcall (script->L, 0, 0, 0)) {
-            slurm_error ("spank/lua: %s", lua_tostring (script->L, -1));
+        if (lua_pcall (script->L, 0, 0, 0) || setjmp (panicbuf)) {
+            const char *s = basename (script->path);
+            slurm_error ("spank/lua: %s: %s", s, lua_tostring (script->L, -1));
             return (-1);
         }
 
         /*
-         *  Load any options exported via a spank_options table
+         *  Load any options exported via a global spank_options table
          */
         if (load_spank_options_table (script->L, sp) < 0)
             return (-1);
