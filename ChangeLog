@@ -1,3 +1,10 @@
+2009-12-18 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.9-2.
+
+	* slurm-spank-plugins.spec :
+	  Include missing argument in /etc/slurm/plugstack.d/99-lua
+
 2009-12-16 Mark Grondona <mgrondona@llnl.gov>
 
 	* : tag v0.9.
