@@ -1,3 +1,10 @@
+2009-12-21 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.10.
+
+	* lua/lua.c :
+	  Fix for segv when no lua scripts are configured.
+
 2009-12-18 Mark Grondona <mgrondona@llnl.gov>
 
 	* : tag v0.9-2.
