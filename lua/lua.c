@@ -1039,8 +1039,12 @@ static int call_foreach (List l, spank_t sp, const char *name,
 {
     int rc = 0;
     struct lua_script *script;
-    ListIterator i = list_iterator_create (l);
+    ListIterator i;
 
+    if (l == NULL)
+        return (0);
+
+    i = list_iterator_create (l);
     while ((script = list_next (i))) {
         if (lua_spank_call (script->L, sp, name, ac, av) < 0)
             rc = -1;
