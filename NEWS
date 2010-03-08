@@ -1,3 +1,8 @@
+Version 0.10 (2010-03-07):
+ - Fix segfault in spank/lua due to lua stack overflow.
+ - Fix use-env segv when exit hook called before init.
+ - Fixes for spank/cpuset use with slurm-2.1.
+
 Version 0.10 (2009-12-21):
  - Fix segfault in spank/lua when no lua scripts are configured.
 

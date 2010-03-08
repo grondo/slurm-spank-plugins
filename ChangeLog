@@ -1,3 +1,41 @@
+2010-03-07 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.11.
+
+2010-03-06 Mark Grondona <mgrondona@llnl.gov>
+
+	* lua/lua.c :
+	  Avoid lua stack overflow.
+
+2010-03-06 Mark Grondona <mgrondona@llnl.gov>
+
+	* cpuset/pam_slurm_cpuset.c :
+	  Remove unecessary logging.
+
+	* cpuset/Makefile, cpuset/cpuset.c, cpuset/slurm.c,
+	  cpuset,slurm.h, cpuset/util.c, cpuset/pam_slurm_cpuset.c :
+	  Remove unecessary calls to dynamically opened slurm symbols.
+	  Instead link to liblslurm directly.
+
+	* cpuset/cpuset.c :
+	  Add get_nodeid() call.
+
+	* cpuset/cpuset.c :
+	  Move slurmstepd process back to user cpuset after last task
+	  has exited. This prevents a hanging slurmstepd from consuming
+	  CPUs when SLURM job is marked as completed.
+
+2010-03-05 Mark Grondona <mgrondona@llnl.gov>
+
+	* use-env/log_msg.c :
+	  Fix potential bad free() if spank exit hook called before
+	  spank_init.
+
+2010-03-03 Mark Grondona <mgrondona@llnl.gov>
+
+	* lua/spank-lua.8 :
+	  Fix typo in man page.
+
 2009-12-21 Mark Grondona <mgrondona@llnl.gov>
 
 	* : tag v0.10.
