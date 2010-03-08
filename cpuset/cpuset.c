@@ -149,7 +149,7 @@ static int get_nodeid (spank_t sp)
 static int query_ncpus_per_node (spank_t sp, uint32_t jobid)
 {
     job_info_msg_t * msg;
-    uint16_t cpus_per_node = -1;
+    uint16_t cpus_per_node = 0;
     int i;
 
     /*
@@ -195,7 +195,7 @@ static int query_ncpus_per_node (spank_t sp, uint32_t jobid)
     }
 
     slurm_free_job_info_msg (msg);
-    if (cpus_per_node < 0)
+    if (cpus_per_node == 0)
         cpuset_error ("Failed to get nCPUs for this node: %s\n", slurm_strerror (errno));
     return (cpus_per_node);
 }
