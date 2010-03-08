@@ -116,10 +116,8 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int ac, const char **av)
     /*
      *  If we're already in the user's cpuset, bail early
      */
-    if (in_user_cpuset (uid)) {
-        log_msg ("User %s (uid=%d) already in cpuset", user, uid);
+    if (in_user_cpuset (uid))
         return (PAM_SUCCESS);
-    }
 
     /*
      *  Read any configuration:
@@ -276,9 +274,8 @@ int create_all_job_cpusets (cpuset_conf_t conf, uid_t uid)
         if ((j->user_id != uid) || (j->job_state != JOB_RUNNING))
             continue;
 
-        if (!(ncpus = cpus_on_node (j, hostname))) {
-            log_err ("job %u: Failed to find ncpus for this node", j->job_id);
-        }
+        if ((ncpus = cpus_on_node (j, hostname)) <= 0)
+            continue;
 
         if (!job_cpuset_exists (j->job_id, j->user_id) &&
             create_cpuset_for_job (conf, j->job_id, j->user_id, ncpus) < 0) {
