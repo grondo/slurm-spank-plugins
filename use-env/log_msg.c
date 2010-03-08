@@ -36,7 +36,7 @@ struct log_ctx {
 	char *prefix;
 };
 
-static struct log_ctx log_ctx = { 0, 0, "" };
+static struct log_ctx log_ctx = { 0, 0, NULL };
 
 int log_msg_init (const char *prefix)
 {
