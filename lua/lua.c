@@ -727,8 +727,10 @@ static int lua_spank_call (lua_State *L, spank_t sp, const char *fn,
      * Missing functions are not an error
      */
     lua_getglobal (L, fn);
-    if (lua_isnil (L, -1))
-        return 0;
+    if (lua_isnil (L, -1)) {
+        lua_pop (L, 1);
+        return (0);
+    }
 
     /*
      * Create spank object to pass to spank functions
@@ -803,8 +805,10 @@ int load_spank_options_table (lua_State *L, spank_t sp)
     int t;
 
     lua_getglobal (L, "spank_options");
-    if (lua_isnil (L, -1))
+    if (lua_isnil (L, -1)) {
+        lua_pop (L, 1);
         return (0);
+    }
 
     /*
      *  Iterate through spank_options table, which should
