@@ -236,12 +236,14 @@ int slurm_jobid_is_valid (int jobid)
     static job_info_msg_t *msg = NULL;
     int i;
 
+    dyn_slurm_open ();
+
     cpuset_debug ("slurm_jobid_is_valid (%d)\n", jobid);
 
     if (msg == NULL) 
-        dyn_slurm_load_jobs (&msg);
+        slurm_load_jobs (0, &msg, SHOW_DETAIL);
     else if (jobid == -1) {
-        dyn_slurm_free_job_info_msg (msg);
+        slurm_free_job_info_msg (msg);
         return (0);
     }
 

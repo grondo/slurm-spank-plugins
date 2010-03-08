@@ -5,9 +5,9 @@
  *  Written by Mark Grondona <mgrondona@llnl.gov>.
  *
  *  UCRL-CODE-235358
- * 
+ *
  *  This file is part of chaos-spankings, a set of spank plugins for SLURM.
- * 
+ *
  *  This is free software; you can redistribute it and/or modify it
  *  under the terms of the GNU General Public License as published by
  *  the Free Software Foundation; either version 2 of the License, or
@@ -28,10 +28,7 @@
 
 #include <slurm/slurm.h>
 
-int dyn_slurm_load_jobs (job_info_msg_t **msgp);
-int dyn_slurm_load_job (job_info_msg_t **msgp, uint32_t jobid);
-char * dyn_slurm_strerror (int errnum);
-void dyn_slurm_free_job_info_msg (job_info_msg_t *msg);
+int dyn_slurm_open ();
 void dyn_slurm_close ();
 
 #endif

@@ -166,7 +166,12 @@ static int query_ncpus_per_node (spank_t sp, uint32_t jobid)
     /*
      * Otherwise, we have to query all jobs and find the right job record.
      */
-    if (dyn_slurm_load_job (&msg, jobid) < 0) {
+    /*
+     *  Ensure that libslurm.so has been dlopened with RTLD_GLOBAL passed.
+     */
+    dyn_slurm_open ();
+
+    if (slurm_load_job (&msg, jobid, SHOW_DETAIL) < 0) {
         cpuset_error ("slurm_load_job: %s\n", slurm_strerror (errno));
         return (-1);
     }
@@ -192,7 +197,7 @@ static int query_ncpus_per_node (spank_t sp, uint32_t jobid)
         }
     }
 
-    dyn_slurm_free_job_info_msg (msg);
+    slurm_free_job_info_msg (msg);
     if (cpus_per_node < 0)
         cpuset_error ("Failed to get nCPUs for this node: %s\n", slurm_strerror (errno));
     return (cpus_per_node);

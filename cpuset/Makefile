@@ -7,7 +7,7 @@ PAMDIR  := /$(LIBNAME)/security
 
 FLAGS   := -ggdb -Wall -I../lib
 SHOPTS  := -shared -Wl,--version-script=version.map
-LLIBS   := -lbitmask -lcpuset -ldl -lfl
+LLIBS   := -lslurm -lbitmask -lcpuset -ldl -lfl
 OBJS    := nodemap.o util.o create.o log.o slurm.o \
            conf.o conf-lexer.o conf-parser.o \
            ../lib/fd.o ../lib/list.o ../lib/split.o

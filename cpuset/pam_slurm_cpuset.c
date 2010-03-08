@@ -264,7 +264,8 @@ int create_all_job_cpusets (cpuset_conf_t conf, uid_t uid)
     if ((p = strchr (hostname, '.')))
         *p = '\0';
 
-    if (dyn_slurm_load_jobs (&msg) < 0) {
+    dyn_slurm_open ();
+    if (slurm_load_jobs (0, &msg, SHOW_ALL|SHOW_DETAIL) < 0) {
         return (-1);
     }
 
@@ -288,7 +289,9 @@ int create_all_job_cpusets (cpuset_conf_t conf, uid_t uid)
         total_cpus += ncpus;
     }
 
-    dyn_slurm_free_job_info_msg (msg);
+    slurm_free_job_info_msg (msg);
+
+    dyn_slurm_close ();
 
     return (total_cpus);
 }
