@@ -148,19 +148,16 @@ static int get_nodeid (spank_t sp)
  */
 static int query_ncpus_per_node (spank_t sp, uint32_t jobid)
 {
-    const char var[] = "SLURM_JOB_CPUS_PER_NODE";
-    char val[16];
     job_info_msg_t * msg;
-    int cpus_per_node = -1;
+    uint16_t cpus_per_node = -1;
     int i;
 
     /*
-     *  If SLURM_JOB_CPUS_PER_NODE is set in environment, 
-     *   return that value so we don't have to contact SLURM controller.
+     *  Use the S_JOB_NCPUS spank item if it exists:
      */
-    if (spank_getenv (sp, var, val, sizeof (val)) == ESPANK_SUCCESS) {
-        cpuset_debug ("SLURM_JOB_CPUS_PER_NODE=%s\n", val);
-        return (str2int (val));
+    if (spank_get_item (sp, S_JOB_NCPUS, &cpus_per_node) == ESPANK_SUCCESS) {
+        cpuset_debug ("S_JOB_NCPUS = %d\n", cpus_per_node);
+        return (cpus_per_node);
     }
 
     /*
