@@ -265,6 +265,62 @@ static int log_stderr (const char *msg)
     return (0); 
 }
 
+
+static int migrate_to_user_cpuset  (uid_t uid)
+{
+    int rc;
+    char path [128];
+
+    rc = snprintf (path, sizeof (path), "/slurm/%d", uid);
+    if (rc < 0 || rc > sizeof (path))
+        return (-1);
+
+    if (cpuset_move (0, path) < 0)
+        return (-1);
+
+    return (0);
+}
+
+
+int slurm_spank_task_exit (spank_t sp, int ac, char *av[])
+{
+    uid_t uid;
+    static uint32_t n = 0;
+    static int nexited = 0;
+
+    if (n == 0 &&
+        spank_get_item (sp, S_JOB_LOCAL_TASK_COUNT, &n) != ESPANK_SUCCESS) {
+        cpuset_error ("task_exit: Failed to get ntasks\n");
+        return (0);
+    }
+
+    if (++nexited < n)
+        return (0);
+
+    /*
+     *  There are no more user tasks. Move this slurm daemon
+     *   out of the job/job step cpuset back to the user cpuset
+     *   in case the daemon hangs around after the job has been
+     *   marked as complete by SLURM.
+     */
+    if (spank_get_item (sp, S_JOB_UID, &uid) != ESPANK_SUCCESS) {
+        cpuset_error ("Failed to get uid: %m\n", strerror (errno));
+        return (-1);
+    }
+
+    if (migrate_to_user_cpuset (uid) < 0) {
+        cpuset_error ("migrate_to_user_cpuset(%d) failed: %s\n",
+                uid, strerror (errno));
+        /*
+         *  Don't make failure here a fatal error. 99% of the time
+         *   it is ok since we'll shortly exit.
+         */
+        return (0);
+    }
+
+    return (0);
+}
+
 int slurm_spank_init (spank_t sp, int ac, char *av[])
 {
     int rc;
