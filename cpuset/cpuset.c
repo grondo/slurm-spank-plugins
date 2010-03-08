@@ -130,6 +130,16 @@ static int parse_options (int ac, char **av)
     return (0);
 }
 
+static int get_nodeid (spank_t sp)
+{
+    int nodeid = -1;
+    if (spank_get_item (sp, S_JOB_NODEID, &nodeid) != ESPANK_SUCCESS) {
+        cpuset_error ("Failed to get my nodeid\n");
+        return (-1);
+    }
+    return (nodeid);
+}
+
 /*
  *  XXX: Since we don't have a good way to determine the number of
  *   CPUs allocated to this job on this node, we have to query
