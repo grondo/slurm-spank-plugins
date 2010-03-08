@@ -234,15 +234,27 @@ struct bitmask *used_cpus_bitmask_path (char *path, int clearall)
 int slurm_jobid_is_valid (int jobid)
 {
     static job_info_msg_t *msg = NULL;
+    static time_t last_update = 0;
     int i;
+    int try = 0;
 
     dyn_slurm_open ();
 
     cpuset_debug ("slurm_jobid_is_valid (%d)\n", jobid);
 
-    if (msg == NULL) 
-        slurm_load_jobs (0, &msg, SHOW_DETAIL);
-    else if (jobid == -1) {
+    while (slurm_load_jobs (last_update, &msg, SHOW_DETAIL) < 0 &&
+            errno != SLURM_NO_CHANGE_IN_DATA) {
+
+        /*  Give up after 3 tries and for safety mark the job
+         *   as valid
+         */
+        if (++try > 3)
+            return (1);
+    }
+
+    last_update = time (NULL);
+
+    if (jobid == -1) {
         slurm_free_job_info_msg (msg);
         return (0);
     }
