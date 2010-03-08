@@ -1,3 +1,6 @@
+Version 0.12 (2010-03-08):
+ - Fix unchecked return from slurm_load_jobs(3) in cpuset code.
+
 Version 0.11 (2010-03-07):
  - Fix segfault in spank/lua due to lua stack overflow.
  - Fix use-env segv when exit hook called before init.

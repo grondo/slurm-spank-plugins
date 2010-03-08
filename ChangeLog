@@ -1,3 +1,13 @@
+2010-03-08 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.12.
+
+	* cpuset/util.c : Fix unchecked return code from slurm_load_jobs(3)
+	  which could lead to segv in various components, including
+	  slurmstepd and cpuset_release_agent.
+
+	* cpuset/cpuset.c : Fix signed comparison of unsinged variable.
+
 2010-03-07 Mark Grondona <mgrondona@llnl.gov>
 
 	* : tag v0.11.
