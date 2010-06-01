@@ -293,9 +293,8 @@ int slurm_spank_init(spank_t sp, int ac, char **av)
         }
         while ((user = list_next(itr))) {
             if (!(pw = getpwnam(user))) {
-                slurm_error ("%s: %s: invalid user\n", PROG, user);
-                rc = -1;
-                goto done; 
+                slurm_error ("%s: warning: allowuser=%s\n", PROG, user);
+                continue;
             }
             if (uid == pw->pw_uid) {
                 allowed = 1;
