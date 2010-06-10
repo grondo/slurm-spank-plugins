@@ -335,7 +335,8 @@ define_use_env_keyword (spank_t sp, char *name, spank_item_t item)
 
 static int set_argv_keywords (spank_t sp)
 {
-    char cmdline [4096];
+    char *cmdline;
+    size_t cmdlen;
     char buf [64];
     const char **av;
     int ac;
@@ -356,22 +357,34 @@ static int set_argv_keywords (spank_t sp)
 
     keyword_define ("SLURM_ARGC", buf);
 
-    memset (cmdline, 0, sizeof (cmdline));
-
+    cmdlen = 0;
     for (i = 0; i < ac; i++) {
+
         snprintf (buf, sizeof (buf), "SLURM_ARGV%d", i);
         keyword_define (buf, av[i]);
 
-        if ((n = strlen (cmdline)) != 0) {
-            strcat (cmdline, " ");
-            n++;
-        }
+        cmdlen += strlen (av[i]) + 1;
+    }
 
-        if (sizeof (cmdline) > (n + strlen (av[i]) + 1))
-            strcat (cmdline, av[i]);
+    if ((cmdline = malloc (cmdlen + 1)) == NULL) {
+        slurm_error ("use-env: Out of memory setting SLURM_CMDLINE!");
+        return (-1);
+    }
+    memset (cmdline, 0, sizeof (cmdlen+1));
+
+
+    /*
+     *  Build SLURM_CMDLINE string:
+     */
+    strcat (cmdline, av[0]);
+    for (i = 1; i < ac; i++) {
+        strcat (cmdline, " ");
+        strcat (cmdline, av[i]);
     }
 
     keyword_define ("SLURM_CMDLINE", cmdline);
+
+    free (cmdline);
 
     return (0);
 }
