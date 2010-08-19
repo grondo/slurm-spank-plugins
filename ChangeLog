@@ -1,4 +1,8 @@
-2010-03-11 Mark Grondona <mgrondona@llnl.gov>
+2010-08-19 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.13.
+
+2010-08-11 Mark Grondona <mgrondona@llnl.gov>
 
 	* auto-affinity.c : Add 'cpus' and 'masks' options to allow
 	  users to explicitly specify CPU affinity for tasks.

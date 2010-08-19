@@ -1,3 +1,7 @@
+Version 0.13 (2010-08-19):
+ - auto-affinity: Add cpus= and masks= options to allow manual
+   mapping of tasks to CPUs.
+
 Version 0.12 (2010-03-08):
  - Fix unchecked return from slurm_load_jobs(3) in cpuset code.
 
