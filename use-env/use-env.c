@@ -370,7 +370,7 @@ static int set_argv_keywords (spank_t sp)
         slurm_error ("use-env: Out of memory setting SLURM_CMDLINE!");
         return (-1);
     }
-    cmdlen[0] = '\0';
+    cmdline[0] = '\0';
 
 
     /*
