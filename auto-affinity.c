@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <sys/types.h>
+#include <ctype.h>
 
 #define __USE_GNU
 #include <sched.h>
@@ -40,19 +41,6 @@
 #include "lib/fd.h"
 
 SPANK_PLUGIN(auto-affinity, 1);
-
-static int ncpus  = -1;
-static int ntasks = -1;
-static int enabled = 1;
-static int verbose = 0;
-static int reverse = 0;
-static int startcpu = 0;
-static int requested_cpus_per_task = 0;
-static int exclusive_only = 0;
-
-static cpu_set_t cpus_available;
-static int       ncpus_available;
-static int      *cpu_position_map = NULL;
 
 static const char auto_affinity_help [] = 
 "\
@@ -79,10 +67,70 @@ where args... is a comma separated list of one or more of the following\n\
                     in reverse, start [N] CPUs from the last CPU.\n\
   rev(erse)         Allocate last CPU first instead of starting with CPU0.\n\
   cpus_per_task=N   Allocate [N] CPUs to each task.\n\
-  cpt=N             Shorthand for cpus_per_task.\n\n";
+  cpt=N             Shorthand for cpus_per_task.\n\
+\n\
+The following options may be used to explicitly list the CPUs for each\n\
+task on a node.\n\
+  cpus=LIST         Comma-separated list of CPUs to allocate to tasks\n\
+  masks=LIST        Comma-separated mask of CPUs to allocate to each task\n\
+\n\
+Where the cpu and mask lists are of the same format documented in the\n\
+cpuset(4) manpage in the FORMATS section.\n\
+\n\
+If one of the cpus= or masks= options is used, it must be the last option\n\
+specified, and any 'reverse' or 'start' option will be ignored\n\
+\n\n";
 
+
+/*****************************************************************************
+ *
+ *  Global auto-affinity variables
+ *
+ ****************************************************************************/
+
+static int ncpus  = -1;
+static int ntasks = -1;
+static int enabled = 1;
+static int verbose = 0;
+static int reverse = 0;
+static int startcpu = 0;
+static int requested_cpus_per_task = 0;
+
+/*
+ *  Variables for explicit user CPU/core mapping.
+ */
+static int        nlist_elements = 0;    /* Number of elements in following  */
+static char       *cpus_list = NULL;     /* cstr-style list of CPUs          */
+static cpu_set_t *cpu_mask_list = NULL;  /* array of CPU masks               */
+
+static int exclusive_only = 0;
+
+/*
+ *  CPU position map (logical to physical CPU/core mapping)
+ */
+static cpu_set_t cpus_available;
+static int       ncpus_available;
+static int      *cpu_position_map = NULL;
+
+/*****************************************************************************
+ *
+ *  Forward declarations
+ *
+ ****************************************************************************/
 
 static int parse_user_option (int val, const char *optarg, int remote);
+static char * cpuset_to_cstr (cpu_set_t *mask, char *str);
+static int cstr_count (const char *str);
+static int cstr_to_cpu_id (const char *str, int n);
+static int str_to_cpuset(cpu_set_t *mask, const char* str);
+static int cpu_set_count (cpu_set_t *setp);
+
+
+/*****************************************************************************
+ *
+ *  SPANK plugin options:
+ *
+ ****************************************************************************/
 
 struct spank_option spank_options [] = {
     { "auto-affinity", "[args]",
@@ -92,6 +140,13 @@ struct spank_option spank_options [] = {
     },
     SPANK_OPTIONS_TABLE_END
 };
+
+
+/*****************************************************************************
+ *
+ *  Functions:
+ *
+ ****************************************************************************/
 
 static int str2int (const char *str)
 {
@@ -104,31 +159,31 @@ static int str2int (const char *str)
     return ((int) l);
 }
 
-static int parse_option (const char *opt, int *remotep)
+static int parse_option (const char *opt, int remote)
 {
     if (strcmp (opt, "off") == 0)
         enabled = 0;
     else if ((strcmp (opt, "reverse") == 0) || (strcmp (opt, "rev") == 0))
         reverse = 1;
     else if (strncmp (opt, "cpt=", 4) == 0) {
-        if ((requested_cpus_per_task = str2int (opt+4)) < 0) 
+        if ((requested_cpus_per_task = str2int (opt+4)) < 0)
             goto fail;
-    } 
+    }
     else if (strncmp (opt, "cpus_per_task=", 14) == 0) {
-        if ((requested_cpus_per_task = str2int (opt+14)) < 0) 
+        if ((requested_cpus_per_task = str2int (opt+14)) < 0)
             goto fail;
-    } 
+    }
     else if (strncmp (opt, "start=", 6) == 0) {
-        if ((startcpu = str2int (opt+6)) < 0) 
+        if ((startcpu = str2int (opt+6)) < 0)
             goto fail;
-    } 
+    }
     else if (strcmp (opt, "verbose") == 0 || strcmp (opt, "v") == 0)
         verbose = 1;
-    else if ((strcmp (opt, "help") == 0) && !(*remotep)) {
+    else if ((strcmp (opt, "help") == 0) && !remote) {
         fprintf (stderr, auto_affinity_help);
         exit (0);
     }
-        
+
     return (0);
 
     fail:
@@ -136,20 +191,90 @@ static int parse_option (const char *opt, int *remotep)
     return (-1);
 }
 
+static void list_clear (List l)
+{
+    char *s;
+    while ((s = list_pop (l)))
+        free (s);
+}
+
+
+static int parse_cpus_list (List l)
+{
+    char str [4096];
+
+    /*  Recreate cpus= argument
+     */
+    list_join (str, sizeof (str), ",", l);
+
+    if ((nlist_elements = cstr_count (str)) < 0) {
+        fprintf (stderr, "auto-affinity: Failed to parse '%s'\n", str);
+        return (-1);
+    }
+
+    if (nlist_elements == 0) {
+        fprintf (stderr, "auto-affinity: No cpus in '%s'\n", str);
+        return (-1);
+    }
+
+    cpus_list = strdup (str);
+
+    list_clear (l);
+
+    return (0);
+}
+
+static int parse_cpu_mask_list (List l)
+{
+    char *s;
+    int n;
+    int i = 0;
+    int rc = 0;
+
+    nlist_elements = n = list_count (l);
+    cpu_mask_list = malloc (n * sizeof(cpu_set_t));
+
+    while ((s = list_pop (l))) {
+        if ((rc = str_to_cpuset (&cpu_mask_list[i++], s)) < 0)
+            fprintf (stderr, "auto-affinity: Invalide cpu mask '%s'\n", s);
+        free (s);
+    }
+    return rc;
+}
+
+
 static int parse_user_option (int val, const char *arg, int remote)
 {
     char *str;
     List l;
     int rc = 1;
 
-    if (arg == NULL) 
+    if (arg == NULL)
         return (0);
 
-    l = list_split (",", (str = strdup (arg)));
-    rc = list_for_each (l, (ListForF) parse_option, &remote);
+    str = strdup (arg);
+    l = list_split (",", str);
+    free (str);
+
+    while ((str = list_pop (l))) {
+        /*
+         *  For cpus= and masks=, the rest of the line
+         *   is taken to be part of the option:
+         */
+        if (strncmp (str, "cpus=", 5) == 0) {
+            list_push (l, strdup (str+5));
+            rc = parse_cpus_list (l);
+        }
+        else if (strncmp (str, "masks=", 6) == 0) {
+            list_push (l, strdup (str+6));
+            rc = parse_cpu_mask_list (l);
+        }
+        else
+            rc = parse_option (str, remote);
+        free (str);
+    }
 
     list_destroy (l);
-    free (str);
 
     return (rc);
 }
@@ -185,6 +310,12 @@ static int read_file_int (const char *path)
 
     return (val);
 }
+
+/*****************************************************************************
+ *
+ *  CPU position map functions:
+ *
+ ****************************************************************************/
 
 struct cpu_info {
     int id;
@@ -299,6 +430,12 @@ static int get_nodeid (spank_t sp)
     return (nodeid);
 }
 
+/*****************************************************************************
+ *
+ *  Utility functions
+ *
+ ****************************************************************************/
+
 /*
  *  XXX: Since we don't have a good way to determine the number of
  *   CPUs allocated to this job on this node, we have to query
@@ -384,6 +521,13 @@ static int job_is_exclusive (spank_t sp)
 }
 
 
+/*****************************************************************************
+ *
+ *  SPANK callback functions:
+ *
+ ****************************************************************************/
+
+
 int slurm_spank_init (spank_t sp, int ac, char **av)
 {
     if (!spank_remote (sp))
@@ -420,6 +564,12 @@ int slurm_spank_exit (spank_t sp, int ac, char **av)
     if (cpu_position_map != NULL)
         free (cpu_position_map);
 
+    if (cpus_list != NULL)
+        free (cpus_list);
+
+    if (cpu_mask_list != NULL)
+        free (cpu_mask_list);
+
     return (0);
 }
 
@@ -455,47 +605,11 @@ static int cpu_set_count (cpu_set_t *setp)
 {
     int i;
     int n = 0;
-    for (i = 0; i < ncpus; i++) {
+    for (i = 0; i < CPU_SETSIZE; i++) {
         if (CPU_ISSET (i, setp))
             n++;
     }
     return (n);
-}
-
-static char * cpuset_to_cstr (cpu_set_t *mask, char *str)
-{
-    int i;
-    char *ptr = str;
-    int entry_made = 0;
-
-    for (i = 0; i < CPU_SETSIZE; i++) {
-        if (CPU_ISSET(i, mask)) {
-            int j;
-            int run = 0;
-            entry_made = 1;
-            for (j = i + 1; j < CPU_SETSIZE; j++) {
-                if (CPU_ISSET(j, mask))
-                    run++;
-                else
-                    break;
-            }
-            if (!run)
-                sprintf(ptr, "%d,", i);
-            else if (run == 1) {
-                sprintf(ptr, "%d,%d,", i, i + 1);
-                i++;
-            } else {
-                sprintf(ptr, "%d-%d,", i, i + run);
-                i += run;
-            }
-            while (*ptr != 0)
-                ptr++;
-        }
-    }
-    ptr -= entry_made;
-    *ptr = 0;
-
-    return str;
 }
 
 static int get_cpus_per_task ()
@@ -522,6 +636,23 @@ static int mask_to_available (int cpu)
     }
     slurm_error ("Yikes! Couldn't convert CPU%d to available CPU!", cpu);
     return (-1);
+}
+
+static int cpu_set_physical_to_logical (cpu_set_t *setp)
+{
+    int i;
+    cpu_set_t lcpus = *setp;
+
+    CPU_ZERO (setp);
+
+    for (i = 0; i < CPU_SETSIZE; i++) {
+        if (CPU_ISSET (i, &lcpus)) {
+            int cpu = cpu_position_to_id (i);
+            CPU_SET (mask_to_available (cpu), setp);
+        }
+    }
+
+    return (0);
 }
 
 static int generate_mask (cpu_set_t *setp, int localid)
@@ -635,6 +766,20 @@ int check_task_cpus_available (void)
      return (0);
 }
 
+static void generate_mask_from_cpus_list (const char *cpus_list,
+        cpu_set_t *setp, int localid)
+{
+    if (requested_cpus_per_task) {
+        int i;
+        int idx = localid * requested_cpus_per_task;
+        for (i = 0; i < requested_cpus_per_task; idx++, i++)
+            CPU_SET (cstr_to_cpu_id (cpus_list, idx % nlist_elements), setp);
+    }
+    else
+        CPU_SET (cstr_to_cpu_id (cpus_list, localid % nlist_elements), setp);
+}
+
+
 int slurm_spank_task_init (spank_t sp, int ac, char **av)
 {
     int localid;
@@ -688,7 +833,15 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
 
     CPU_ZERO (setp);
 
-    if (reverse)
+    if (cpus_list) {
+        generate_mask_from_cpus_list (cpus_list, setp, localid);
+        cpu_set_physical_to_logical (setp);
+    }
+    else if (cpu_mask_list) {
+        *setp = cpu_mask_list[localid % nlist_elements];
+        cpu_set_physical_to_logical (setp);
+    }
+    else if (reverse)
         generate_mask_reverse (setp, localid);
     else
         generate_mask (setp, localid);
@@ -705,6 +858,198 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
 
     return (0);
 }
+
+/*****************************************************************************
+ *
+ *  cpu_set_t parsing functions
+ *
+ *  The following code taken from taskset.c in util-linux
+ *
+ *  Copyright (C) 2004 Robert Love
+ *
+ ****************************************************************************/
+
+static inline int char_to_val(int c)
+{
+    int cl;
+
+    cl = tolower(c);
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    else if (cl >= 'a' && cl <= 'f')
+        return cl + (10 - 'a');
+    else
+        return -1;
+}
+
+static int str_to_cpuset(cpu_set_t *mask, const char* str)
+{
+    int len = strlen(str);
+    const char *ptr = str + len - 1;
+    int base = 0;
+
+    /* skip 0x, it's all hex anyway */
+    if (len > 1 && !memcmp(str, "0x", 2L))
+        str += 2;
+
+    CPU_ZERO(mask);
+    while (ptr >= str) {
+        char val = char_to_val(*ptr);
+        if (val == (char) -1)
+            return -1;
+        if (val & 1)
+            CPU_SET(base, mask);
+        if (val & 2)
+            CPU_SET(base + 1, mask);
+        if (val & 4)
+            CPU_SET(base + 2, mask);
+        if (val & 8)
+            CPU_SET(base + 3, mask);
+        len--;
+        ptr--;
+        base += 4;
+    }
+
+    return 0;
+}
+
+static const char * nexttoken (const char *p, int sep)
+{
+    if (p)
+        p = strchr (p, sep);
+    if (p)
+        p++;
+    return (p);
+}
+
+/*
+ *  Modified version of cstr_to_cpuset to count CPUs in cstr.
+ */
+static int cstr_count (const char *str)
+{
+    int count = 0;
+    const char *p, *q;
+    q = str;
+
+    while (p = q, q = nexttoken(q, ','), p) {
+        unsigned int a; /* beginning of range */
+        unsigned int b; /* end of range */
+        unsigned int s; /* stride */
+        const char *c1, *c2;
+
+        if (sscanf(p, "%u", &a) < 1)
+            return 1;
+        b = a;
+        s = 1;
+
+        c1 = nexttoken(p, '-');
+        c2 = nexttoken(p, ',');
+        if (c1 != NULL && (c2 == NULL || c1 < c2)) {
+            if (sscanf(c1, "%u", &b) < 1)
+                return -1;
+            c1 = nexttoken(c1, ':');
+            if (c1 != NULL && (c2 == NULL || c1 < c2))
+                if (sscanf(c1, "%u", &s) < 1) {
+                    return -1;
+                }
+        }
+
+        if (!(a <= b))
+            return 1;
+        while (a <= b) {
+            count++;
+            a += s;
+        }
+    }
+
+    return count;
+
+}
+
+/*
+ *   Modified version of cstr_to_cpuset to return the cpu
+ *    at index n in the cstr.
+ */
+static int cstr_to_cpu_id (const char *str, int n)
+{
+    int index = 0;
+    const char *p, *q;
+    q = str;
+
+    while (p = q, q = nexttoken(q, ','), p) {
+        unsigned int a; /* beginning of range */
+        unsigned int b; /* end of range */
+        unsigned int s; /* stride */
+        const char *c1, *c2;
+
+        if (sscanf(p, "%u", &a) < 1)
+            return 1;
+        b = a;
+        s = 1;
+
+        c1 = nexttoken(p, '-');
+        c2 = nexttoken(p, ',');
+        if (c1 != NULL && (c2 == NULL || c1 < c2)) {
+            if (sscanf(c1, "%u", &b) < 1)
+                return -11;
+            c1 = nexttoken(c1, ':');
+            if (c1 != NULL && (c2 == NULL || c1 < c2))
+                if (sscanf(c1, "%u", &s) < 1) {
+                    return -11;
+                }
+        }
+
+        if (!(a <= b))
+            return 1;
+        while (a <= b) {
+            if (index == n)
+                return (a);
+            a += s;
+            index++;
+        }
+    }
+
+    return -1;
+}
+
+
+static char * cpuset_to_cstr (cpu_set_t *mask, char *str)
+{
+    int i;
+    char *ptr = str;
+    int entry_made = 0;
+
+    for (i = 0; i < CPU_SETSIZE; i++) {
+        if (CPU_ISSET(i, mask)) {
+            int j;
+            int run = 0;
+            entry_made = 1;
+            for (j = i + 1; j < CPU_SETSIZE; j++) {
+                if (CPU_ISSET(j, mask))
+                    run++;
+                else
+                    break;
+            }
+            if (!run)
+                sprintf(ptr, "%d,", i);
+            else if (run == 1) {
+                sprintf(ptr, "%d,%d,", i, i + 1);
+                i++;
+            } else {
+                sprintf(ptr, "%d-%d,", i, i + run);
+                i += run;
+            }
+            while (*ptr != 0)
+                ptr++;
+        }
+    }
+    ptr -= entry_made;
+    *ptr = 0;
+
+    return str;
+}
+
+
 
 /*
  * vi: ts=4 sw=4 expandtab
