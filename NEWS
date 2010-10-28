@@ -1,4 +1,4 @@
-Version 0.14 (2010-08-19):
+Version 0.14 (2010-10-28):
  - auto-affinity: Check for SLURM's -c, --cpus-per-task, and if set
     to a value greater than 1, use this for cpt,cpus_per_task.
  - auto-affinity: Unless the config option 'multiples_only' is set
