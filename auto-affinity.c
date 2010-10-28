@@ -103,7 +103,10 @@ static int        nlist_elements = 0;    /* Number of elements in following  */
 static char       *cpus_list = NULL;     /* cstr-style list of CPUs          */
 static cpu_set_t *cpu_mask_list = NULL;  /* array of CPU masks               */
 
-static int exclusive_only = 0;
+static int exclusive_only = 0; /*  Only set affinity if this job has         *
+                                *   exclusive access to this node            */
+static int multiples_only = 0; /*  Only set affinity if ncpus is a multiple  *
+                                *   of ntasks                                */
 
 /*
  *  CPU position map (logical to physical CPU/core mapping)
@@ -287,7 +290,9 @@ static int parse_argv (int ac, char **av, int remote)
             enabled = 0;
         else if (strcmp (av[i], "exclusive_only") == 0)
             exclusive_only = 1;
-        else 
+        else if (strcmp (av[i], "multiples_only") == 0)
+            multiples_only = 1;
+        else
             return (-1);
     }
     return (0);
@@ -585,11 +590,16 @@ int slurm_spank_user_init (spank_t sp, int ac, char **av)
     if (!spank_remote (sp))
         return (0);
 
+    /*  Enable CPU affinity operation only if we make it through
+     *   the following checks.
+     */
+    enabled = 0;
+
     if (exclusive_only && !job_is_exclusive (sp)) {
         if (verbose) 
             fprintf (stderr, "auto-affinity: Disabling. "
                     "(job doesn't have exclusive access to this node)\n");
-        enabled = 0;
+        return (0);
     }
 
     /*
@@ -608,8 +618,36 @@ int slurm_spank_user_init (spank_t sp, int ac, char **av)
         if (verbose) 
             fprintf (stderr, "auto-affinity: Disabling. "
                     "ncpus must be evenly divisible by number of tasks\n");
-        enabled = 0;
+        return (0);
     }
+
+    /*
+     * Do nothing by default if number of CPUs is not a multiple
+     *  of the number of tasks
+     */
+    if (multiples_only) {
+        if ((ncpus_available % ntasks) && !requested_cpus_per_task) {
+            if (verbose) {
+                fprintf (stderr, "auto-affinity: Not adjusting mask. "
+                        "(%d tasks not evenly divided among %d CPUs)\n", 
+                        ntasks, ncpus_available);
+                fprintf (stderr, "To force, explicity set cpus-per-task\n");
+            }
+            return (0);
+        }
+    }
+    else if ((ncpus_available / ntasks) == 1) {
+        if (verbose) {
+            fprintf (stderr, "auto-affinity: Refusing to bind a single CPU"
+                    " per task (%d CPUs/%d tasks)\n",
+                    ncpus_available, ntasks);
+            fprintf (stderr, "To force, explicitly set cpus-per-task\n");
+        }
+        return (0);
+    }
+
+    /*  Success. */
+    enabled = 1;
 
     return (0);
 }
@@ -629,10 +667,8 @@ static int get_cpus_per_task ()
 {
     if (requested_cpus_per_task)
         return (requested_cpus_per_task);
-    else if ((ncpus_available % ntasks) == 0)
-        return (ncpus_available / ntasks);
     else
-        return (1);
+        return (ncpus_available / ntasks);
 }
 
 /*
@@ -820,20 +856,6 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
      */
     if (ntasks > ncpus_available)
         return (0);
-
-    /*
-     * Do nothing by default if number of CPUs is not a multiple
-     *  of the number of tasks
-     */
-    if ((ncpus_available % ntasks) && !requested_cpus_per_task) {
-        if (verbose) {
-            fprintf (stderr, "auto-affinity: Not adjusting mask. "
-                    "(%d tasks not evenly divided among %d CPUs)\n", 
-                    ntasks, ncpus_available);
-            fprintf (stderr, "To force, explicity set cpus-per-task\n");
-        }
-        return (0);
-    }
 
     spank_get_item (sp, S_TASK_ID, &localid);
 

@@ -1,5 +1,11 @@
 2010-10-27 Mark Grondona <mgrondona@llnl.gov>
 
+	* auto-affinity.c : If int(ncpus / ntasks) > 1, use this result as
+	  the value of cpus_per_task even when the number of CPUs is not
+	  an exact multiple of the number of tasks. A new option,
+	  multiples_only given in the plugstack.conf will reinstate the
+	  old behavior.
+
 	* auto-affinity.c : If user provided -c, --cpus-per-task of >= 2
 	  to SLURM, and the user did not explicitly set cpus_per_task/cpt
 	  in the auto-affinity module, then use the SLURM value of
