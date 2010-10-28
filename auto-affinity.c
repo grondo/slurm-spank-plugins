@@ -580,6 +580,8 @@ int slurm_spank_exit (spank_t sp, int ac, char **av)
  */
 int slurm_spank_user_init (spank_t sp, int ac, char **av)
 {
+    int cpt = 0;
+
     if (!spank_remote (sp))
         return (0);
 
@@ -590,7 +592,18 @@ int slurm_spank_user_init (spank_t sp, int ac, char **av)
         enabled = 0;
     }
 
-    if (exclusive_only && 
+    /*
+     *  Set requested_cpus_per_task to the number of cpus_per_task
+     *    recorded by slurm, but only if that value was set
+     *    explicitly by the user (i.e. the user ran with -c 2 or greater)
+     */
+    if (!requested_cpus_per_task) {
+        int rc = spank_get_item (sp, S_STEP_CPUS_PER_TASK, &cpt);
+        if ((rc == ESPANK_SUCCESS) && (cpt > 1))
+            requested_cpus_per_task = cpt;
+    }
+
+    if (exclusive_only &&
         (ntasks < ncpus_available) && (ncpus_available % ntasks)) {
         if (verbose) 
             fprintf (stderr, "auto-affinity: Disabling. "

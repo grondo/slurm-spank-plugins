@@ -1,3 +1,10 @@
+2010-10-27 Mark Grondona <mgrondona@llnl.gov>
+
+	* auto-affinity.c : If user provided -c, --cpus-per-task of >= 2
+	  to SLURM, and the user did not explicitly set cpus_per_task/cpt
+	  in the auto-affinity module, then use the SLURM value of
+	  cpus_per_task as if it had been passed to auto-affinity.
+
 2010-08-19 Mark Grondona <mgrondona@llnl.gov>
 
 	* : tag v0.13.
