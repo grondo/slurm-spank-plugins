@@ -1,3 +1,7 @@
+2010-10-28 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.14.
+
 2010-10-27 Mark Grondona <mgrondona@llnl.gov>
 
 	* auto-affinity.c : If int(ncpus / ntasks) > 1, use this result as

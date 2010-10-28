@@ -1,3 +1,11 @@
+Version 0.14 (2010-08-19):
+ - auto-affinity: Check for SLURM's -c, --cpus-per-task, and if set
+    to a value greater than 1, use this for cpt,cpus_per_task.
+ - auto-affinity: Unless the config option 'multiples_only' is set
+    round cpus_per_task down to the next multiple, if the result is
+    greater than 1. (E.g. 5 tasks on a 12 CPU node would use
+    2 CPUs per task, leaving 2 CPUs unbound.)
+
 Version 0.13 (2010-08-19):
  - auto-affinity: Add cpus= and masks= options to allow manual
    mapping of tasks to CPUs.
