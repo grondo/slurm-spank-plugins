@@ -604,8 +604,6 @@ int slurm_spank_exit (spank_t sp, int ac, char **av)
  */
 int slurm_spank_user_init (spank_t sp, int ac, char **av)
 {
-    int cpt = 0;
-
     if (!spank_remote (sp))
         return (0);
 
@@ -627,45 +625,55 @@ int slurm_spank_user_init (spank_t sp, int ac, char **av)
      *    explicitly by the user (i.e. the user ran with -c 2 or greater)
      */
     if (!requested_cpus_per_task) {
+        int cpt;
         int rc = spank_get_item (sp, S_STEP_CPUS_PER_TASK, &cpt);
         if ((rc == ESPANK_SUCCESS) && (cpt > 1))
             requested_cpus_per_task = cpt;
     }
 
-    if (exclusive_only &&
-        (ntasks < ncpus_available) && (ncpus_available % ntasks)) {
-        if (verbose) 
-            fprintf (stderr, "auto-affinity: Disabling. "
-                    "ncpus must be evenly divisible by number of tasks\n");
+    /*  Enable by default if user requested cpt, cpus= or masks=.
+     */
+    if (requested_cpus_per_task || cpus_list || cpu_mask_list) {
+        enabled = 1;
         return (0);
     }
 
     /*
-     * Do nothing by default if number of CPUs is not a multiple
-     *  of the number of tasks
+     *   Don't do anything for overcommit
      */
-    if (multiples_only) {
-        if ((ncpus_available % ntasks) && !requested_cpus_per_task) {
-            if (verbose) {
-                fprintf (stderr, "auto-affinity: Not adjusting mask. "
-                        "(%d tasks not evenly divided among %d CPUs)\n", 
-                        ntasks, ncpus_available);
-                fprintf (stderr, "To force, explicity set cpus-per-task\n");
-            }
-            return (0);
-        }
+    if (ntasks > ncpus_available) {
+        if (verbose)
+            fprintf (stderr, "auto-affinity: Disabling due to overcommit.\n");
+        return (0);
     }
-    else if ((ncpus_available / ntasks) == 1) {
+
+    /*
+     *  If ncpus is a multiple of ntasks then enable auto-affinity.
+     */
+    if ((ncpus_available % ntasks) == 0) {
+        enabled = 1;
+        return (0);
+    }
+
+    /*
+     *  If multiples_only is set or ncpus/ntasks == 1,
+     *   then do nothing.
+     */
+    if (multiples_only || (ncpus_available/ntasks == 1)) {
         if (verbose) {
-            fprintf (stderr, "auto-affinity: Refusing to bind a single CPU"
-                    " per task (%d CPUs/%d tasks)\n",
-                    ncpus_available, ntasks);
-            fprintf (stderr, "To force, explicitly set cpus-per-task\n");
+            fprintf (stderr, "auto-affinity: Not adjusting mask. "
+                    "(%d tasks not evenly divided among %d CPUs)\n", 
+                    ntasks, ncpus_available);
+            fprintf (stderr, "To force, explicity set cpus-per-task\n");
         }
         return (0);
     }
 
-    /*  Success. */
+    /*
+     *  Now we know ncpus/ntasks > 1.
+     *   Set this as the requested CPUs/task  and enable auto-affinity:
+     */
+    requested_cpus_per_task = ncpus_available/ntasks;
     enabled = 1;
 
     return (0);
