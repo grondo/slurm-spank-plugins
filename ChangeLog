@@ -1,5 +1,7 @@
 2011-01-10 Mark Grondona <mgrondona@llnl.gov>
 
+	* : tag v0.15.
+
 	* auto-affinity.c : Fix up bug in CPU affinity enable.
 
 	* auto-affinity.c : Add repeat operator to masks= option.

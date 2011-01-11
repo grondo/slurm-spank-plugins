@@ -1,3 +1,9 @@
+Version 0.15 (2011-01-10):
+- auto-affinity: Fix bug in auto CPU affinity enable for case where
+   multiples_only is not set.
+- Allow a repeat count for CPU masks in the masks= option. For example,
+   0xf0*4,0x0f*2 = 0xf0,0xf0,0xf0,0xf0,0x0f,0x0f.
+
 Version 0.14 (2010-10-28):
  - auto-affinity: Check for SLURM's -c, --cpus-per-task, and if set
     to a value greater than 1, use this for cpt,cpus_per_task.
