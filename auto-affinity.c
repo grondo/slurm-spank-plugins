@@ -75,7 +75,8 @@ task on a node.\n\
   masks=LIST        Comma-separated mask of CPUs to allocate to each task\n\
 \n\
 Where the cpu and mask lists are of the same format documented in the\n\
-cpuset(4) manpage in the FORMATS section.\n\
+cpuset(4) manpage in the FORMATS section. Masks may be optionally followed\n\
+by a repeat count (e.g. 0xf0*2 == 0xf0,0xf0)\n\
 \n\
 If one of the cpus= or masks= options is used, it must be the last option\n\
 specified, and any 'reverse' or 'start' option will be ignored\n\
@@ -227,6 +228,30 @@ static int parse_cpus_list (List l)
     return (0);
 }
 
+static List cpu_mask_list_expand (List l)
+{
+    int i, n;
+    char *s;
+    List mask_list;
+    mask_list = list_create ((ListDelF) free);
+
+    while ((s = list_pop (l))) {
+        char *rep = strchr (s, '*');
+        if (rep) {
+            *rep = '\0';
+            n = atoi (rep+1);
+            for (i = 0; i < n; i++)
+                list_append (mask_list, strdup (s));
+        }
+        else
+            list_append (mask_list, strdup (s));
+
+        free (s);
+    }
+    return (mask_list);
+}
+
+
 static int parse_cpu_mask_list (List l)
 {
     char *s;
@@ -234,10 +259,12 @@ static int parse_cpu_mask_list (List l)
     int i = 0;
     int rc = 0;
 
-    nlist_elements = n = list_count (l);
+    List mask_list = cpu_mask_list_expand (l);
+
+    nlist_elements = n = list_count (mask_list);
     cpu_mask_list = malloc (n * sizeof(cpu_set_t));
 
-    while ((s = list_pop (l))) {
+    while ((s = list_pop (mask_list))) {
         if ((rc = str_to_cpuset (&cpu_mask_list[i++], s)) < 0)
             fprintf (stderr, "auto-affinity: Invalide cpu mask '%s'\n", s);
         free (s);
