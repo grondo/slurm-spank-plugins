@@ -253,5 +253,6 @@ fi
 %{_sysconfdir}/slurm/plugstack.conf.d/99-lua
 %{_libdir}/slurm/lua.so
 %{_mandir}/man8/spank-lua*
+%{_libdir}/lua/5.1/*
 %endif
 
