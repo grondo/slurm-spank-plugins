@@ -1,3 +1,8 @@
+2011-01-12 Mark Grondona <mgrondona@llnl.gov>
+
+	* lua/lua-schedutils, lua/Makefile :
+	  Added lua 'schedutils' module for use in spank-lua modules.
+
 2011-01-10 Mark Grondona <mgrondona@llnl.gov>
 
 	* : tag v0.15.

@@ -1,7 +1,19 @@
 PLUGINS = \
    lua.so \
 
-all: $(PLUGINS)
+SUBDIRS = \
+   lua-schedutils
+
+all: $(PLUGINS) subdirs
+
+check: subdirs-check
+
+subdirs:
+	@for d in $(SUBDIRS); do make -C $$d; done
+
+subdirs-check:
+	@for d in $(SUBDIRS); do make -C $$d check; done
+
 
 .SUFFIXES: .c .o .so
 
@@ -11,12 +23,21 @@ all: $(PLUGINS)
 lua.so : lua.o ../lib/list.o
 	$(CC) -shared -o $*.so $^ -llua
 
-clean:
+clean: subdirs-clean
 	rm -f *.so *.o lib/*.o
 
-install:
+subdirs-clean:
+	@for d in $(SUBDIRS); do make -C $$d clean; done
+
+install: subdirs-install
 	@mkdir -p --mode=0755 $(DESTDIR)$(LIBDIR)/slurm
 	@for p in $(PLUGINS); do \
 	   echo "Installing $$p in $(LIBDIR)/slurm"; \
 	   install -m0755 $$p $(DESTDIR)$(LIBDIR)/slurm; \
 	 done
+
+subdirs-install:
+	@for d in $(SUBDIRS); do \
+		make -C $$d DESTDIR=$(DESTDIR) install; \
+	done
+
