@@ -1,3 +1,7 @@
+Version 0.16 (2011-01-12):
+- Lua: Package a lua 'schedutils' module for access to sched_getaffinity(2)
+   and sched_setaffinity(2) from lua spank plugins.
+
 Version 0.15 (2011-01-10):
 - auto-affinity: Fix bug in auto CPU affinity enable for case where
    multiples_only is not set.

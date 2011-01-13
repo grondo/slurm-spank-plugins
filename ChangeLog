@@ -1,5 +1,7 @@
 2011-01-12 Mark Grondona <mgrondona@llnl.gov>
 
+	* : tag v0.16.
+
 	* slurm-spank-plugins.spec :
 	  Package lua-schedutils with slurm-spank-plugins-lua.
 
