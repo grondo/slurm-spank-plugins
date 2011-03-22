@@ -107,7 +107,6 @@ Obsoletes: chaos-spankings
 %description llnl
 The set of SLURM SPANK plugins that will only run on LLNL systems.
 Includes:
- - oom-detect.so : Detect tasks killed by OOM killer.
  - private-mount.so :
                    Run jobs or tasks in a private file system namespace
                    and privately mount file systems from /etc/slurm/fstab.
@@ -245,9 +244,6 @@ fi
 %files llnl
 %defattr(-,root,root,0755)
 %doc NEWS NEWS.old ChangeLog
-%if %{_with sgijob}
-%{_libdir}/slurm/oom-detect.so
-%endif
 %{_libdir}/slurm/private-mount.so
 %endif
 

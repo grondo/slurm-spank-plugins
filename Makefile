@@ -25,10 +25,6 @@ PLUGINS = \
 LIBRARIES = \
    system-safe-preload.so \
 
-ifeq ($(BUILD_LLNL_ONLY), 1)
-   PLUGINS += oom-detect.so
-endif
-
 SUBDIRS = \
     use-env \
     overcommit-memory
