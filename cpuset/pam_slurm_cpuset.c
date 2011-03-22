@@ -225,26 +225,7 @@ int hostname_hostid (const char *host, const char *nodes)
 
 int cpus_on_node (job_info_t *j, const char *host)
 {
-#if ((SLURM_VERSION && SLURM_VERSION >= SLURM_VERSION_NUM(2,1,0)) || \
-     SLURM_API_VERSION >= SLURM_VERSION_NUM(21,0,0))
     return slurm_job_cpus_allocated_on_node (j->job_resrcs, host);
-#else /* SLURM_VERSION < 2.1.0 */
-    int i;
-    int start = 0;
-    int hostid = hostname_hostid (host, j->nodes);
-
-    if (hostid < 0)
-        return (-1);
-
-    for (i = 0; i < j->num_cpu_groups; i++) {
-        if (hostid >= start && hostid < (start + j->cpu_count_reps[i]))
-            return (j->cpus_per_node[i]);
-        else
-            start += j->cpu_count_reps[i];
-    }
-
-    return (0);
-#endif /* SLURM_VERSION >= 2.1.0 */
 }
 
 int create_all_job_cpusets (cpuset_conf_t conf, uid_t uid)
