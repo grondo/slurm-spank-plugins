@@ -29,6 +29,14 @@
 %_without_opt lua
 %endif
 
+%if %{?chaos}0 && 0%{?chaos} < 5
+%_with_opt sgijob
+%else
+%_without_opt sgijob
+%endif
+
+
+
 Name:    
 Version:
 Release:    
@@ -49,7 +57,7 @@ BuildRequires: libbitmask libcpuset
 BuildRequires: pam-devel
 %endif
 
-%if %{_with llnl_plugins}
+%if %{_with sgijob}
 BuildRequires: job
 %endif
 
@@ -90,7 +98,10 @@ Currently includes:
 %package  llnl
 Summary:  SLURM spank plugins LLNL-only
 Group:    System Environment/Base
-Requires: slurm job
+Requires: slurm
+%if %{_with sgijob}
+Requires: job
+%endif
 Obsoletes: chaos-spankings
 
 %description llnl
@@ -234,7 +245,9 @@ fi
 %files llnl
 %defattr(-,root,root,0755)
 %doc NEWS NEWS.old ChangeLog
+%if %{_with sgijob}
 %{_libdir}/slurm/oom-detect.so
+%endif
 %{_libdir}/slurm/private-mount.so
 %endif
 
