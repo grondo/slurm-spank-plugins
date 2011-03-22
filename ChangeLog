@@ -1,3 +1,11 @@
+2011-03-21 Mark Grondona <mgrondona@llnl.gov>
+
+	* : tag v0.17.
+
+	* slurm-spank-plugins.spec :
+	  Allow conditional build of oom-detect when SGI job module isn't
+	  available.
+
 2011-01-12 Mark Grondona <mgrondona@llnl.gov>
 
 	* : tag v0.16.
