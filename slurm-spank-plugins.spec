@@ -165,7 +165,7 @@ make \
   %{?_with_lua:WITH_LUA=1} \
   CFLAGS="$RPM_OPT_FLAGS" 
 
-%if %{_with_lua}
+%if %{_with lua}
   cd lua && make check
 %endif
 
@@ -204,7 +204,7 @@ mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/slurm/plugstack.conf.d
 #     $RPM_BUILD_ROOT/%{_sysconfdir}/slurm/plugstack.conf.d/99-preserve-env
 rm -f $RPM_BUILD_ROOT/%{_libdir}/slurm/preserve-env.so
 
-%if %{_with_lua}
+%if %{_with lua}
 echo " required  lua.so /etc/slurm/lua.d/*.lua" > \
      $RPM_BUILD_ROOT/%{_sysconfdir}/slurm/plugstack.conf.d/99-lua
 install -D -m0644 lua/spank-lua.8 $RPM_BUILD_ROOT/%{_mandir}/man8
@@ -261,7 +261,7 @@ fi
 %endif
 
 
-%if %{_with_lua}
+%if %{_with lua}
 %files lua
 %{_sysconfdir}/slurm/plugstack.conf.d/99-lua
 %{_libdir}/slurm/lua.so
