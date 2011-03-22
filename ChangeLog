@@ -2,6 +2,9 @@
 
 	* : tag v0.17.
 
+	* cpuset/cpuset.c :
+	  Remove code supporting slurm version < 2.1.0.
+
 	* Makefile :
 	  Remove oom-detect.so.
 
