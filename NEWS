@@ -1,5 +1,5 @@
-Version 0.16 (2011-03-21):
-- Allow conditional build of oom-detect plugin (LLNL-only package).
+Version 0.17 (2011-03-22):
+- Disable build of oom-detect plugin, which is now obsolete (LLNL-only).
 
 Version 0.16 (2011-01-12):
 - Lua: Package a lua 'schedutils' module for access to sched_getaffinity(2)
