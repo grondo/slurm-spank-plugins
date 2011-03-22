@@ -155,6 +155,10 @@ make \
   %{?_with_lua:WITH_LUA=1} \
   CFLAGS="$RPM_OPT_FLAGS" 
 
+%if %{_with_lua}
+  cd lua && make check
+%endif
+
 %install
 rm -rf "$RPM_BUILD_ROOT"
 mkdir -p "$RPM_BUILD_ROOT"
