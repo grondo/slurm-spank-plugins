@@ -30,6 +30,9 @@
 #include <setjmp.h> /* need longjmp for lua_atpanic */
 #include <libgen.h> /* basename(3) */
 
+#include <sys/types.h>
+#include <sys/wait.h>
+
 #include <slurm/spank.h>
 #include <lua.h>
 #include <lauxlib.h>
@@ -326,6 +329,37 @@ l_spank_id_query (lua_State *L, spank_t sp, spank_item_t item)
     return (1);
 }
 
+static int l_spank_get_exit_status (lua_State *L, spank_t sp)
+{
+    spank_err_t err;
+    int status;
+
+    err = spank_get_item (sp, S_TASK_EXIT_STATUS, &status);
+    if (err != ESPANK_SUCCESS)
+        return l_spank_error (L, err);
+
+    lua_pushnumber (L, status);
+    /*
+     *  Now push WEXITSTATUS or nil if !WIFEXITED and
+     *   WTERMSIG, WCOREDUMP or nil if !WIFSIGNALED
+     */
+    if (WIFEXITED (status))
+        lua_pushnumber (L, WEXITSTATUS (status));
+    else
+        lua_pushnil (L);
+
+    if (WIFSIGNALED (status)) {
+        lua_pushnumber (L, WTERMSIG (status));
+        lua_pushnumber (L, WCOREDUMP (status));
+    }
+    else {
+        lua_pushnil (L);
+        lua_pushnil (L);
+    }
+    /* Returns 4 values: status, exitcode, termsig, coredumped */
+    return (4);
+}
+
 static int l_spank_get_item (lua_State *L)
 {
     spank_t sp;
@@ -350,7 +384,6 @@ static int l_spank_get_item (lua_State *L)
         case S_JOB_NCPUS:
         case S_TASK_ID:
         case S_TASK_GLOBAL_ID:
-        case S_TASK_EXIT_STATUS:
         case S_TASK_PID:
         case S_STEP_CPUS_PER_TASK:
         case S_JOB_ALLOC_MEM:
@@ -370,6 +403,8 @@ static int l_spank_get_item (lua_State *L)
         case S_JOB_PID_TO_GLOBAL_ID:
         case S_JOB_PID_TO_LOCAL_ID:
             return l_spank_id_query (L, sp, item);
+        case S_TASK_EXIT_STATUS:
+            return l_spank_get_exit_status (L, sp);
     }
 
     return (0);

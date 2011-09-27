@@ -143,6 +143,40 @@ For items that return multiple values, spank-lua will return a table,
 for example, spank:get_item ("S_JOB_ENV") returns a lua table of
 the job environment with t[name] = val  for each environment entry
 \fBname\fR=\fBval\fR.
+
+For some specific items, \fBget_item\fR will return additional
+values following the raw item value. Currently, the only item
+for which this is true is \fBS_TASK_EXIT_CODE\fR:
+.nf
+
+  \fIstatus\fR, \fIexitcode\fR, \fItermsig\fR, \fIcore\fR =
+      spank:get_item ("\fBS_TASK_EXIT_CODE\fR")
+
+.fi
+Where \fIstatus\fR is the raw exit status as reported by \fBwait\fR(2),
+\fIexitcode\fR is the exit code as returned by \fBWEXITSTATUS\fR(\fIstatus\fR)
+(or \fInil\fR if not \fBWIFEXITED\fR(\fIstatus\fR)), and  \fItermsig\fR and
+\fIcore\fR hold the values of \fBWTERMSIG\fR(\fIstatus\fR) and
+\fBWCOREDUMP\fR(\fIstatus\fR) respectively, or \fInil\fR if not
+\fBWIFSIGNALED\fR(\fIstatus\fR). For example, to print information
+about the exiting task, you might run:
+.nf
+
+    local fmt = string.format
+    local msg
+    local _, exitcode, termsig, core =
+        spank:get_item ("S_TASK_EXIT_CODE")
+
+    if exitcode then
+        msg = fmt ("Exited with code %d\\n", exitcode)
+    elseif termsig then
+        local s = ""
+        if core then s = " (Core dumped)" end
+        msg = fmt ("Killed by signal %d%s\\n", termsig, s)
+    end
+    print (msg)
+.fi
+
 .TP
 .BI getenv " (name)"
 Return the value of environment variable \fIname\fR from the job's
