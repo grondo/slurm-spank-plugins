@@ -114,6 +114,8 @@ static struct s_item_name {
     SPANK_ITEM(S_STEP_CPUS_PER_TASK),
     SPANK_ITEM(S_JOB_ALLOC_CORES),
     SPANK_ITEM(S_JOB_ALLOC_MEM),
+    SPANK_ITEM(S_STEP_ALLOC_CORES),
+    SPANK_ITEM(S_STEP_ALLOC_MEM),
     SPANK_ITEM_END
 };
 
@@ -387,8 +389,10 @@ static int l_spank_get_item (lua_State *L)
         case S_TASK_PID:
         case S_STEP_CPUS_PER_TASK:
         case S_JOB_ALLOC_MEM:
+        case S_STEP_ALLOC_MEM:
             return l_spank_get_item_val (L, sp, item);
         case S_JOB_ALLOC_CORES:
+        case S_STEP_ALLOC_CORES:
         case S_SLURM_VERSION:
         case S_SLURM_VERSION_MAJOR:
         case S_SLURM_VERSION_MINOR:
