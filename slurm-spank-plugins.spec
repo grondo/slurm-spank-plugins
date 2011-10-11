@@ -208,7 +208,7 @@ rm -f $RPM_BUILD_ROOT/%{_libdir}/slurm/preserve-env.so
 %if %{_with lua}
 echo " required  lua.so /etc/slurm/lua.d/*.lua" > \
      $RPM_BUILD_ROOT/%{_sysconfdir}/slurm/plugstack.conf.d/99-lua
-install -D -m0644 lua/spank-lua.8 $RPM_BUILD_ROOT/%{_mandir}/man8
+install -D -m0644 lua/spank-lua.8 $RPM_BUILD_ROOT/%{_mandir}/man8/spank-lua.8
 %endif
 
 %clean
