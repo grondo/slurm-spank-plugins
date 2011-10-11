@@ -1,3 +1,8 @@
+Version 0.18 (2011-10-11):
+- Disable build of cpuset plugin on CHAOS5 systems (LLNL-only).
+- lua: Add S_STEP_ALLOC_MEM and S_STEP_ALLOC_CORES for spank:get_item()
+- lua: Add multi-value return for S_TASK_EXIT_CODE (status, code, signal, core)
+
 Version 0.17 (2011-03-22):
 - Disable build of oom-detect plugin, which is now obsolete (LLNL-only).
 - Fix cpuset plugin build against slurm-2.3.
