@@ -21,7 +21,6 @@
 
 %if 0%{?chaos}
 %_with_opt llnl_plugins
-%_with_opt cpuset
 %_with_opt lua
 %else
 %_without_opt llnl_plugins
@@ -31,8 +30,10 @@
 
 %if %{?chaos}0 && 0%{?chaos} < 5
 %_with_opt sgijob
+%_with_opt cpuset
 %else
 %_without_opt sgijob
+%_without_opt cpuset
 %endif
 
 
