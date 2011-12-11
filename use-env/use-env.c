@@ -49,7 +49,7 @@ static int local_user_cb_supported = 0;  /* 1 if spank_local_user is avail*/
 static int disable_in_task =  0;         /*  Don't run in task if nonzero */
 static char * default_name = "default";  /*  Name of system default file  */
 static List   env_list     = NULL;       /*  Global list of files to read */
-
+static char * home         = NULL;       /*  $HOME                        */
 
 /****************************************************************************
  *  Wrappers for spank environment manipulation
@@ -88,6 +88,7 @@ struct spank_option spank_options[] =
 static int check_local_user_symbol ();
 static int use_env_debuglevel ();
 static int process_args (int ac, char **av);
+static char * xgetenv_copy (const char *var);
 static char * env_override_file_search (char *, size_t, const char *, int);
 static int do_env_override (const char *path, spank_t sp);
 static int define_all_keywords (spank_t sp);
@@ -121,6 +122,14 @@ int slurm_spank_init (spank_t sp, int ac, char **av)
      */
     if (spank_remote (sp)) 
         use_env_set_operations (&spank_env_ops, sp);
+
+    /*
+     *  Initialize global HOME dir
+     */
+    if ((home = xgetenv_copy ("HOME")) == NULL) {
+        slurm_error ("use-env: Unable to read HOME environment var");
+        return -1;
+    }
 
     /*
      *  Check for default files in the following order:
@@ -226,11 +235,10 @@ static int use_env_debuglevel ()
 static char * 
 env_override_file_search (char *path, size_t len, const char *name, int flags)
 {
-    const char *home;
     int check_user = !(flags & NO_SEARCH_USER);
     int check_sys  = !(flags & NO_SEARCH_SYSTEM);
 
-    if (check_user && (home = xgetenv ("HOME"))) {
+    if (check_user) {
         snprintf (path, len, "%s/.slurm/environment/%s", home, name);
         if (access (path, R_OK) >= 0) 
             return (path);
@@ -434,6 +442,14 @@ static int process_args (int ac, char **av)
     }
 
     return (0);
+}
+
+static char * xgetenv_copy (const char *var)
+{
+    const char *val = xgetenv (var);
+    if (val)
+        return strdup (val);
+    return (NULL);
 }
 
 /****************************************************************************
