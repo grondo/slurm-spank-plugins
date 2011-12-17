@@ -78,6 +78,7 @@ struct lua_script {
     char *path;
     lua_State *L;
     int ref;
+    int fail_on_error;
 };
 List lua_script_list = NULL;
 
@@ -86,7 +87,6 @@ List lua_script_list = NULL;
  */
 static jmp_buf panicbuf;
 static int spank_atpanic (lua_State *L) { longjmp (panicbuf, 0); }
-
 
 /*
  *  Lua scripts pass string versions of spank_item_t to get/set_time.
@@ -790,7 +790,7 @@ static int lua_spank_call (struct lua_script *s, spank_t sp, const char *fn,
 
     if (lua_pcall (L, 1, 1, 0)) {
         slurm_error ("spank/lua: %s: %s", fn, lua_tostring (L, -1));
-        return (-1);
+        return (s->fail_on_error ? -1 : 0);
     }
 
     return lua_script_rc (L);
@@ -899,6 +899,7 @@ static struct lua_script * lua_script_create (lua_State *L, const char *path)
     script->path = strdup (path);
     script->L = lua_newthread (L);
     script->ref = luaL_ref (L, LUA_REGISTRYINDEX);
+    script->fail_on_error = 0;
 
     /*
      *  Now we need to redefine the globals table for this script/thread.
@@ -957,7 +958,6 @@ List lua_script_list_create (lua_State *L, const char *pattern)
     glob_t gl;
     size_t i;
     List l = NULL;
-    char *copy = NULL;
 
     if (pattern == NULL)
         return (NULL);
@@ -994,9 +994,41 @@ List lua_script_list_create (lua_State *L, const char *pattern)
     return l;
 }
 
+struct spank_lua_options {
+    unsigned fail_on_error:1;
+};
+
+static int spank_lua_process_args (int *ac, char **argvp[],
+        struct spank_lua_options *opt)
+{
+    /*
+     *  Advance argv past any spank/lua options. The rest of the
+     *   args are the script/glob and script arguments.
+     *
+     *  For now, the only supported spank/lua arg is 'failonerror'
+     *   so this must appear in argv[0]
+     */
+    if (strcmp ((*argvp)[0], "failonerror") == 0) {
+        opt->fail_on_error = 1;
+        (*ac)--;
+        (*argvp)++;
+    }
+    return 0;
+}
+
+static void print_lua_script_error (struct lua_script *script)
+{
+    const char *s = basename (script->path);
+    const char *err = lua_tostring (script->L, -1);
+    if (script->fail_on_error)
+        slurm_error ("spank/lua: Fatal: %s", err);
+    else
+        slurm_info ("spank/lua: Disabling %s: %s", s, err);
+}
 
 int slurm_spank_init (spank_t sp, int ac, char *av[])
 {
+    struct spank_lua_options opt;
     ListIterator i;
     struct lua_script *script;
     int rc;
@@ -1005,6 +1037,10 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
         slurm_error ("spank/lua: Requires at least 1 arg");
         return (-1);
     }
+    /*
+     *  Check for spank/lua options in argv
+     */
+    spank_lua_process_args (&ac, &av, &opt);
 
     /*
      *  dlopen liblua to ensure that symbols from that lib are
@@ -1018,6 +1054,7 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
 
     global_L = luaL_newstate ();
     luaL_openlibs (global_L);
+
     /*
      *  Create the global SPANK table
      */
@@ -1046,34 +1083,44 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
         return (-1);
     }
 
-
     i = list_iterator_create (lua_script_list);
     while ((script = list_next (i))) {
-
-        if (luaL_loadfile (script->L, script->path)) {
-            slurm_error ("spank/lua: %s", lua_tostring (script->L, -1));
-            return (-1);
-        }
+        script->fail_on_error = opt.fail_on_error;
 
         /*
-         *  Compile the lua script
+         *  Load script (luaL_loadfile) and compile it (lua_pcall).
          */
-        if (lua_pcall (script->L, 0, 0, 0)) {
-            const char *s = basename (script->path);
-            slurm_error ("spank/lua: %s: %s", s, lua_tostring (script->L, -1));
-            return (-1);
+        if (luaL_loadfile (script->L, script->path) ||
+            lua_pcall (script->L, 0, 0, 0)) {
+            print_lua_script_error (script);
+            if (opt.fail_on_error)
+                return (-1);
+            list_remove(i);
+            lua_script_destroy (script);
+            continue;
         }
 
         /*
          *  Load any options exported via a global spank_options table
          */
-        if (load_spank_options_table (script->L, sp) < 0)
-            return (-1);
+        if (load_spank_options_table (script->L, sp) < 0) {
+            const char *s = basename (script->path);
+            const char err[] = "error in spank_options table";
+            if (opt.fail_on_error) {
+                slurm_error ("spank/lua: %s: %s", s, err);
+                return (-1);
+            }
+            slurm_info ("spank/lua: Warning: %s: %s", s, err);
+            list_remove(i);
+            lua_script_destroy (script);
+            continue;
+        }
 
         /*
          *  Call slurm_spank_init from the lua script
          */
-        rc = lua_spank_call (script, sp, "slurm_spank_init", ac, av);
+        if (lua_spank_call (script, sp, "slurm_spank_init", ac, av) < 0)
+            rc = -1;
     }
     list_iterator_destroy (i);
     return rc;
@@ -1084,10 +1131,16 @@ static int call_foreach (List l, spank_t sp, const char *name,
 {
     int rc = 0;
     struct lua_script *script;
+    struct spank_lua_options opt;
     ListIterator i;
 
     if (l == NULL)
         return (0);
+
+    /*
+     *  Advance argv past any spank/lua (non-script) options:
+     */
+    spank_lua_process_args (&ac, &av, &opt);
 
     i = list_iterator_create (l);
     while ((script = list_next (i))) {
