@@ -1014,14 +1014,6 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
 
     global_L = luaL_newstate ();
     luaL_openlibs (global_L);
-
-    lua_atpanic (global_L, spank_atpanic);
-    if (setjmp (panicbuf)) {
-        slurm_error ("spank/lua: PANIC: %s: %s",
-                av[0], lua_tostring (global_L, -1));
-        return (-1);
-    }
-
     /*
      *  Create the global SPANK table
      */
@@ -1044,6 +1036,12 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
      *   worrying about the context of the call.
      */
     lua_atpanic (global_L, spank_atpanic);
+    if (setjmp (panicbuf)) {
+        slurm_error ("spank/lua: PANIC: %s: %s",
+                av[0], lua_tostring (global_L, -1));
+        return (-1);
+    }
+
 
     i = list_iterator_create (lua_script_list);
     while ((script = list_next (i))) {
@@ -1056,7 +1054,7 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
         /*
          *  Compile the lua script
          */
-        if (lua_pcall (script->L, 0, 0, 0) || setjmp (panicbuf)) {
+        if (lua_pcall (script->L, 0, 0, 0)) {
             const char *s = basename (script->path);
             slurm_error ("spank/lua: %s: %s", s, lua_tostring (script->L, -1));
             return (-1);
