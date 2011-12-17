@@ -91,7 +91,8 @@ specified, and any 'reverse' or 'start' option will be ignored\n\
 
 static int ncpus  = -1;
 static int ntasks = -1;
-static int enabled = 1;
+static int enabled = 1;    /* True if enabled by configuration              */
+static int disabled = 0;   /* True if disabled by --auto-affinity=off       */
 static int verbose = 0;
 static int reverse = 0;
 static int startcpu = 0;
@@ -166,7 +167,7 @@ static int str2int (const char *str)
 static int parse_option (const char *opt, int remote)
 {
     if (strcmp (opt, "off") == 0)
-        enabled = 0;
+        disabled = 1;
     else if ((strcmp (opt, "reverse") == 0) || (strcmp (opt, "rev") == 0))
         reverse = 1;
     else if (strncmp (opt, "cpt=", 4) == 0) {
@@ -314,7 +315,7 @@ static int parse_argv (int ac, char **av, int remote)
     int i;
     for (i = 0; i < ac; i++) {
         if (strcmp (av[i], "off") == 0)
-            enabled = 0;
+            disabled = 1;
         else if (strcmp (av[i], "exclusive_only") == 0)
             exclusive_only = 1;
         else if (strcmp (av[i], "multiples_only") == 0)
@@ -862,7 +863,7 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
     cpu_set_t setp[1];
     char buf[4096];
 
-    if (!enabled)
+    if (!enabled || disabled)
         return (0);
 
     if (check_task_cpus_available () < 0)
