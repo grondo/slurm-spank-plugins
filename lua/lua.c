@@ -71,6 +71,17 @@ static lua_State *global_L = NULL;
 static List script_option_list = NULL;
 
 /*
+ *  Structure describing an individual lua script
+ *   and a list of such scripts
+ */
+struct lua_script {
+    char *path;
+    lua_State *L;
+    int ref;
+};
+List lua_script_list = NULL;
+
+/*
  *  Tell lua_atpanic where to longjmp on exceptions:
  */
 static jmp_buf panicbuf;
@@ -759,9 +770,10 @@ static int lua_spank_table_create (lua_State *L, spank_t sp, int ac, char **av)
     return (0);
 }
 
-static int lua_spank_call (lua_State *L, spank_t sp, const char *fn,
+static int lua_spank_call (struct lua_script *s, spank_t sp, const char *fn,
         int ac, char **av)
 {
+    struct lua_State *L = s->L;
     /*
      * Missing functions are not an error
      */
@@ -879,14 +891,6 @@ int load_spank_options_table (lua_State *L, spank_t sp)
 
     return (0);
 }
-
-struct lua_script {
-    char *path;
-    lua_State *L;
-    int ref;
-};
-
-List lua_script_list = NULL;
 
 static struct lua_script * lua_script_create (lua_State *L, const char *path)
 {
@@ -1069,7 +1073,7 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
         /*
          *  Call slurm_spank_init from the lua script
          */
-        rc = lua_spank_call (script->L, sp, "slurm_spank_init", ac, av);
+        rc = lua_spank_call (script, sp, "slurm_spank_init", ac, av);
     }
     list_iterator_destroy (i);
     return rc;
@@ -1087,7 +1091,7 @@ static int call_foreach (List l, spank_t sp, const char *name,
 
     i = list_iterator_create (l);
     while ((script = list_next (i))) {
-        if (lua_spank_call (script->L, sp, name, ac, av) < 0)
+        if (lua_spank_call (script, sp, name, ac, av) < 0)
             rc = -1;
     }
 
