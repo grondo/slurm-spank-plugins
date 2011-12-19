@@ -1031,7 +1031,7 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
     struct spank_lua_options opt;
     ListIterator i;
     struct lua_script *script;
-    int rc;
+    int rc = 0;
 
     if (ac == 0) {
         slurm_error ("spank/lua: Requires at least 1 arg");
