@@ -1,3 +1,6 @@
+Version 0.20 (2011-12-19):
+- lua: Fix erroneous failures in spank_init().
+
 Version 0.19 (2011-12-19):
 - auto-affinity: Fix --auto-affinity=off
 - use-env: Fix segfault in remote options processing
