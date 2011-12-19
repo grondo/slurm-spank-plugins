@@ -28,12 +28,13 @@ The lua SPANK plugin is configured like other SPANK plugins by adding
 a line to the plugstack.conf like:
 .nf
 
- required lua.so [\fIGLOB\fR] [\fIOPTIONS\fR]...
+ required lua.so [\fIOPTIONS\fR] [[\fIGLOB\fR] [\fISCRIPT OPTIONS\fR]...
 
 .fi
 
-where \fIGLOB\fR is a path to a lua script to load or a glob which may
-load multiple lua scripts, and \fIOPTIONS\fR is a space-separated list
+where \fIGLOB\fR is a path to a lua script to load or a glob which
+may load multiple lua scripts, \fIOPTIONS\fR is a list of options for
+\fBspank-lua\fR itself, and \fISCRIPT OPTIONS\fR is a space-separated list
 of extra options to pass to all lua scripts loaded by this line. These
 options are passed to lua scripts in the \fBargs\fR member of the
 \fBspank\fR handle. For example:
@@ -51,6 +52,10 @@ such that
   \fBspank.args\fR = { "verbose=1" }
 
 .fi
+
+At this time, the only supported \fIOPTIONS\fR for \fBspank-lua\fR are
+\fBfailonerror\fR, which enabled fatal errors for script loading and
+parsing errors, instead of just skipping the current lua script.
 
 .SH "SPANK LUA API"
 
