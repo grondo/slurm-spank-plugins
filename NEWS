@@ -1,3 +1,9 @@
+Version 0.19 (2011-12-19):
+- auto-affinity: Fix --auto-affinity=off
+- use-env: Fix segfault in remote options processing
+- lua: Do not fail on error loading/compiling lua scripts by default
+   (Set 'failonerror' for old behavior. see spank-lua(8) man page)
+
 Version 0.18 (2011-10-11):
 - Disable build of cpuset plugin on CHAOS5 systems (LLNL-only).
 - lua: Add S_STEP_ALLOC_MEM and S_STEP_ALLOC_CORES for spank:get_item()
