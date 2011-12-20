@@ -46,6 +46,7 @@ SPANK_PLUGIN(use-env, 1)
 
 static int local_user_cb_supported = 0;  /* 1 if spank_local_user is avail*/
 
+static int disable_use_env =  0;         /*  Disable the plugin           */
 static int disable_in_task =  0;         /*  Don't run in task if nonzero */
 static char * default_name = "default";  /*  Name of system default file  */
 static List   env_list     = NULL;       /*  Global list of files to read */
@@ -127,8 +128,17 @@ int slurm_spank_init (spank_t sp, int ac, char **av)
      *  Initialize global HOME dir
      */
     if ((home = xgetenv_copy ("HOME")) == NULL) {
-        slurm_error ("use-env: Unable to read HOME environment var");
-        return -1;
+        /*
+         *  If HOME variable is not set, and we're running as root,
+         *   then be safe and just bail out here. This could be a
+         *   salloc/sbatch process running on behalf of a batch system
+         *   that uses the --uid=USER option. Since there is no way
+         *   to determine what user the job is being submitted as
+         *   (at this time), it is safest to bail out (and later
+         *   ignore any --use-env options.
+         */
+        disable_use_env = 1;
+        return 0;
     }
 
     /*
@@ -166,6 +176,9 @@ int slurm_spank_init (spank_t sp, int ac, char **av)
 
 int slurm_spank_local_user_init (spank_t sp, int ac, char **av)
 {
+    if (disable_use_env)
+        return (0);
+
     if (define_all_keywords (sp) < 0)
         return (-1);
 
@@ -193,6 +206,9 @@ int slurm_spank_task_init (spank_t sp, int ac, char **av)
 
 int slurm_spank_exit (spank_t sp, int ac, char **av)
 {
+    if (disable_use_env)
+        return (0);
+
     use_env_parser_fini ();
     log_msg_fini ();
     return (0);
@@ -238,7 +254,7 @@ env_override_file_search (char *path, size_t len, const char *name, int flags)
     int check_user = !(flags & NO_SEARCH_USER);
     int check_sys  = !(flags & NO_SEARCH_SYSTEM);
 
-    if (check_user) {
+    if (home && check_user) {
         snprintf (path, len, "%s/.slurm/environment/%s", home, name);
         if (access (path, R_OK) >= 0) 
             return (path);
