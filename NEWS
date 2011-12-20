@@ -1,3 +1,6 @@
+Version 0.21 (2011-12-19):
+- use-env: Do not fail on missing HOME environment variable.
+
 Version 0.20 (2011-12-19):
 - lua: Fix erroneous failures in spank_init().
 
