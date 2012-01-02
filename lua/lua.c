@@ -714,7 +714,13 @@ static int l_spank_context (lua_State *L)
     case S_CTX_ALLOCATOR:
         lua_pushstring (L, "allocator");
         break;
+#if HAVE_S_CTX_SLURMD
+    case S_CTX_SLURMD:
+        lua_pushstring (L, "slurmd");
+        break;
+#endif
     case S_CTX_ERROR:
+    default:
         lua_pushstring (L, "error");
         break;
     }
