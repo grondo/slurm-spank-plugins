@@ -1158,6 +1158,14 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
     return call_foreach (lua_script_list, sp, "slurm_spank_init", ac, av);
 }
 
+int slurm_spank_slurmd_init (spank_t sp, int ac, char *av[])
+{
+    if (spank_lua_init (sp, ac, av) < 0)
+        return (-1);
+    return call_foreach (lua_script_list, sp,
+            "slurm_spank_slurmd_init", ac, av);
+}
+
 int slurm_spank_init_post_opt (spank_t sp, int ac, char *av[])
 {
     return call_foreach (lua_script_list, sp,
@@ -1210,6 +1218,20 @@ int slurm_spank_exit (spank_t sp, int ac, char *av[])
     lua_close (global_L);
     return (rc);
 }
+
+int slurm_spank_slurmd_exit (spank_t sp, int ac, char *av[])
+{
+    int rc = call_foreach (lua_script_list, sp,
+            "slurm_spank_slurmd_exit", ac, av);
+
+    if (lua_script_list)
+        list_destroy (lua_script_list);
+    if (script_option_list)
+        list_destroy (script_option_list);
+    lua_close (global_L);
+    return (rc);
+}
+
 
 /*
  * vi: ts=4 sw=4 expandtab
