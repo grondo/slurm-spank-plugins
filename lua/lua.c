@@ -1026,7 +1026,7 @@ static void print_lua_script_error (struct lua_script *script)
         slurm_info ("spank/lua: Disabling %s: %s", s, err);
 }
 
-int slurm_spank_init (spank_t sp, int ac, char *av[])
+int spank_lua_init (spank_t sp, int ac, char *av[])
 {
     struct spank_lua_options opt;
     ListIterator i;
@@ -1115,12 +1115,6 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
             lua_script_destroy (script);
             continue;
         }
-
-        /*
-         *  Call slurm_spank_init from the lua script
-         */
-        if (lua_spank_call (script, sp, "slurm_spank_init", ac, av) < 0)
-            rc = -1;
     }
     list_iterator_destroy (i);
     return rc;
@@ -1157,6 +1151,13 @@ static int call_foreach (List l, spank_t sp, const char *name,
  *  SPANK interface:
  *
  ****************************************************************************/
+int slurm_spank_init (spank_t sp, int ac, char *av[])
+{
+    if (spank_lua_init (sp, ac, av) < 0)
+        return (-1);
+    return call_foreach (lua_script_list, sp, "slurm_spank_init", ac, av);
+}
+
 int slurm_spank_init_post_opt (spank_t sp, int ac, char *av[])
 {
     return call_foreach (lua_script_list, sp,
