@@ -807,10 +807,47 @@ static int lua_spank_call (struct lua_script *s, spank_t sp, const char *fn,
     return lua_script_rc (L);
 }
 
+/*
+ *  Convert '%' to '%%" on the msg string on top of the stack.
+ */
+static const char *l_string_sanitized (lua_State *L)
+{
+    int err;
+    const char fn[] = "local s = ... return string.gsub(s, '%%', '%%%%')";
+
+    err = luaL_loadstring (L, fn);
+    if (err) {
+        slurm_error ("spank/lua: loadstring (%s): %s", fn, lua_tostring(L, -1));
+        return (NULL);
+    }
+
+    /*
+     *  Move string to top of stack:
+     */
+    lua_pushvalue (L, 2);
+    lua_remove (L, 2);
+
+    /*
+     *  Call gsub, throwing away 2nd return value (number of matches),
+     *   leaving modified string on top of stack:
+     */
+    err = lua_pcall (L, 1, 1, 0);
+    if (err) {
+        slurm_error ("spank/lua: sanitize msg: %s", lua_tostring (L, -1));
+        return (NULL);
+    }
+
+    return (lua_tostring (L, -1));
+}
+
 static int l_spank_log_msg (lua_State *L)
 {
     int level = luaL_checknumber (L, 1);
-    const char *msg = luaL_checkstring (L, 2);
+    const char *msg;
+
+    msg = l_string_sanitized (L);
+    if (!msg)
+        return (0);
 
     if (level == -1) {
         slurm_error (msg);
