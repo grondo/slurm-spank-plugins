@@ -1042,6 +1042,35 @@ List lua_script_list_create (lua_State *L, const char *pattern)
     return l;
 }
 
+static int spank_lua_options_table_register (List script_list, spank_t sp)
+{
+    struct lua_script *script;
+    ListIterator i = list_iterator_create (script_list);
+
+    if (i == NULL) {
+        slurm_error ("spank/lua: spank_lua_opts_register: Out of memory");
+        return (-1);
+    }
+
+    while ((script = list_next (i))) {
+        /*
+         *  Load any options exported via a global spank_options table
+         */
+        if (load_spank_options_table (script, sp) < 0) {
+            slurm_error ("spank/lua: %s: load_spank_options: %s",
+                         basename (script->path), lua_tostring (script->L, -1));
+            if (script->fail_on_error)
+                return (-1);
+            list_remove(i);
+            lua_script_destroy (script);
+            continue;
+        }
+    }
+    list_iterator_destroy (i);
+    return (0);
+}
+
+
 struct spank_lua_options {
     unsigned fail_on_error:1;
 };
@@ -1147,22 +1176,6 @@ int spank_lua_init (spank_t sp, int ac, char *av[])
             lua_script_destroy (script);
             continue;
         }
-
-        /*
-         *  Load any options exported via a global spank_options table
-         */
-        if (load_spank_options_table (script->L, sp) < 0) {
-            const char *s = basename (script->path);
-            const char err[] = "error in spank_options table";
-            if (opt.fail_on_error) {
-                slurm_error ("spank/lua: %s: %s", s, err);
-                return (-1);
-            }
-            slurm_info ("spank/lua: Warning: %s: %s", s, err);
-            list_remove(i);
-            lua_script_destroy (script);
-            continue;
-        }
     }
     list_iterator_destroy (i);
     return rc;
@@ -1202,6 +1215,11 @@ static int call_foreach (List l, spank_t sp, const char *name,
 int slurm_spank_init (spank_t sp, int ac, char *av[])
 {
     if (spank_lua_init (sp, ac, av) < 0)
+        return (-1);
+    /*
+     *  Register options in global 'spank_options' table
+     */
+    if (spank_lua_options_table_register (lua_script_list, sp) < 0)
         return (-1);
     return call_foreach (lua_script_list, sp, "slurm_spank_init", ac, av);
 }
