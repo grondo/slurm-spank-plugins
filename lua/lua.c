@@ -642,23 +642,24 @@ lua_script_option_create (struct lua_script *script, int i)
     lua_pop (L, 1);
 
     /*
-     *  Option callback function name (required):
+     *  Option callback function name:
      */
     lua_getfield (L, i, "cb");
-    if (lua_isnil (L, -1))
-        luaL_error (L, "Required field \"cb\" missing from spank option table");
-    o->l_function = strdup (lua_tostring (L, -1));
-    lua_pop (L, 1);
+    if (!lua_isnil (L, -1)) {
+        o->l_function = strdup (lua_tostring (L, -1));
 
-    /*
-     *  Check for existence of callback function
-     */
-    lua_getglobal (L, o->l_function);
-    if (!lua_isfunction (L, -1))
-        luaL_error (L, "Unable to find spank option cb function %s",
-                o->l_function);
+        /*
+         *  Check for existence of callback function
+         */
+        lua_getglobal (L, o->l_function);
+        if (!lua_isfunction (L, -1))
+            luaL_error (L, "Unable to find spank option cb function %s",
+                    o->l_function);
+        lua_pop (L, 1);
+    }
+    else
+        o->l_function = NULL;
     lua_pop (L, 1);
-
     return (o);
 }
 
