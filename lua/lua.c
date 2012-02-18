@@ -58,7 +58,7 @@ SPANK_PLUGIN (lua, 1)
  *
  */
 struct lua_script_option {
-    lua_State *           L;
+    struct lua_script *   script;
     int                   l_val;
     char *                l_function;
     struct spank_option   s_opt;
@@ -557,12 +557,19 @@ static int lua_spank_option_callback (int val, const char *optarg, int remote)
     if (o == NULL)
         return (-1);
 
-    L = o->L;
+    if (o->l_function == NULL)
+        return (0);
+
+    L = o->script->L;
 
     lua_getglobal (L, o->l_function);
     lua_pushnumber (L, o->l_val);
     lua_pushstring (L, optarg);
     lua_pushboolean (L, remote);
+
+    slurm_debug ("spank/lua: %s: callback %s for option %s optarg=%s\n",
+            o->script->path, o->l_function, o->s_opt.name,
+            optarg ? optarg : "nil");
 
     if (lua_pcall (L, 3, 1, 0) != 0) {
         slurm_error ("Failed to call lua callback function %s: %s",
@@ -574,16 +581,17 @@ static int lua_spank_option_callback (int val, const char *optarg, int remote)
     return lua_script_rc (L);
 }
 
-
-static struct lua_script_option *lua_script_option_create (lua_State *L, int i)
+static struct lua_script_option *
+lua_script_option_create (struct lua_script *script, int i)
 {
     struct lua_script_option *o = malloc (sizeof (*o));
+    struct lua_State *L = script->L;
 
     if (o == NULL)
         luaL_error (L, "Unable to create lua script option: Out of memory");
 
     o->s_opt.cb = (spank_opt_cb_f) lua_spank_option_callback;
-    o->L = L;
+    o->script = script;
 
     /*
      *  Option name:
@@ -667,10 +675,14 @@ static void lua_script_option_destroy (struct lua_script_option *o)
     free (o);
 }
 
-static int lua_script_option_register (lua_State *L, spank_t sp, int index)
+
+static int lua_script_option_register (struct lua_script *script,
+    spank_t sp, int index)
 {
     spank_err_t err;
-    struct lua_script_option *opt = lua_script_option_create (L, index);
+    struct lua_State *L = script->L;
+    struct lua_script_option *opt = lua_script_option_create (script, index);
+
 
     if (!script_option_list)
         script_option_list = list_create ((ListDelF)lua_script_option_destroy);
@@ -686,17 +698,27 @@ static int lua_script_option_register (lua_State *L, spank_t sp, int index)
     return (1);
 }
 
+static int find_script_by_state (struct lua_script *s, lua_State *L)
+{
+    return (s->L == L);
+}
+
 static int l_spank_option_register (lua_State *L)
 {
     int rc;
     spank_t sp;
+    struct lua_script *script;
 
     sp = lua_getspank (L, 1);
     if (!lua_istable (L, 2))
         return luaL_error (L,
                 "Expected table argument to spank_option_register");
 
-    rc = lua_script_option_register (L, sp, 2);
+    script = list_find_first (lua_script_list,
+                              (ListFindF) find_script_by_state,
+                              (void *) L);
+
+    rc = lua_script_option_register (script, sp, 2);
     lua_pop (L, 2);
 
     return (rc);
@@ -899,9 +921,10 @@ static int SPANK_table_create (lua_State *L)
     return (0);
 }
 
-int load_spank_options_table (lua_State *L, spank_t sp)
+int load_spank_options_table (struct lua_script *script, spank_t sp)
 {
     int t;
+    lua_State *L = script->L;
 
     lua_getglobal (L, "spank_options");
     if (lua_isnil (L, -1)) {
@@ -923,7 +946,8 @@ int load_spank_options_table (lua_State *L, spank_t sp)
          *   that has been printed by lua, but we pop the stack and
          *   return < 0 so that SLURM can detect failure.
          */
-        if (lua_script_option_register (L, sp, -1) > 1) {
+        if (lua_script_option_register (script, sp, -1) > 1) {
+            slurm_error ("lua_script_option_register: %s", lua_tostring(L, -1));
             lua_pop (L, -1);  /* pop everything */
             return (-1);
         }
