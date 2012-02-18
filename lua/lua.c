@@ -1175,6 +1175,33 @@ static void print_lua_script_error (struct lua_script *script)
         slurm_info ("spank/lua: Disabling %s: %s", s, err);
 }
 
+static int lua_script_valid_in_context (spank_t sp, struct lua_script *script)
+{
+    int valid = 1;
+
+#if HAVE_S_CTX_SLURMD
+    if (spank_context() == S_CTX_SLURMD) {
+        lua_getglobal (script->L, "slurm_spank_slurmd_init");
+        lua_getglobal (script->L, "slurm_spank_slurmd_exit");
+        if (lua_isnil (script->L, -1) && lua_isnil (script->L, -2))
+            valid = 0;
+        lua_pop (script->L, 2);
+    }
+#endif
+#if HAVE_S_CTX_JOB_SCRIPT
+    if (spank_context() == S_CTX_JOB_SCRIPT) {
+        lua_getglobal (script->L, "slurm_spank_job_prolog");
+        lua_getglobal (script->L, "slurm_spank_job_epilog");
+        if (lua_isnil (script->L, -1) && lua_isnil (script->L, -2))
+            valid = 0;
+        lua_pop (script->L, 2);
+    }
+#endif
+
+    return (valid);
+}
+
+
 int spank_lua_init (spank_t sp, int ac, char *av[])
 {
     struct spank_lua_options opt;
@@ -1248,8 +1275,21 @@ int spank_lua_init (spank_t sp, int ac, char *av[])
             lua_script_destroy (script);
             continue;
         }
+
+        /*
+         *  Don't keep script loaded if the script doesn't have any
+         *   callbacks in the current context.
+         */
+        if (!lua_script_valid_in_context (sp, script)) {
+                slurm_debug ("%s: no callbacks in this context",
+                             basename (script->path));
+                list_remove (i);
+                lua_script_destroy (script);
+        }
     }
     list_iterator_destroy (i);
+    slurm_verbose ("spank/lua: Loaded %d plugins in this context",
+                    list_count (lua_script_list));
     return rc;
 }
 
