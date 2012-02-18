@@ -1306,6 +1306,8 @@ int slurm_spank_slurmd_init (spank_t sp, int ac, char *av[])
 
 int slurm_spank_job_prolog (spank_t sp, int ac, char *av[])
 {
+    if (spank_lua_init (sp, ac, av) < 0)
+        return (-1);
     return call_foreach (lua_script_list, sp,
             "slurm_spank_job_prolog", ac, av);
 }
@@ -1353,6 +1355,8 @@ int slurm_spank_task_exit (spank_t sp, int ac, char *av[])
 
 int slurm_spank_job_epilog (spank_t sp, int ac, char *av[])
 {
+    if (spank_lua_init (sp, ac, av) < 0)
+        return (-1);
     return call_foreach (lua_script_list, sp,
             "slurm_spank_job_epilog", ac, av);
 }
