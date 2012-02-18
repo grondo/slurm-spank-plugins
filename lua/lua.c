@@ -719,6 +719,11 @@ static int l_spank_context (lua_State *L)
         lua_pushstring (L, "slurmd");
         break;
 #endif
+#if HAVE_S_CTX_JOB_SCRIPT
+    case S_CTX_JOB_SCRIPT:
+        lua_pushstring (L, "job_script");
+        break;
+#endif
     case S_CTX_ERROR:
     default:
         lua_pushstring (L, "error");
