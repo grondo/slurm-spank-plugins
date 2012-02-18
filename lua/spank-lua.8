@@ -1,4 +1,4 @@
-.TH "spank-lua" "8" "2009-12-14" "spank-lua" "lua bindings for SLURM spank framework"
+.TH "spank-lua" "8" "2012-02-18" "spank-lua" "lua bindings for SLURM spank framework"
 
 .SH "NAME"
 \fBspank-lua\fR \- Lua bindings for SLURM in a SPANK plugin
@@ -69,7 +69,13 @@ see \fBspank\fR(8) manpage for more information on the context
 of each hook listed:
 .TP 8
 .B slurm_spank_init
-Called at initialization in all contexts.
+Called at initialization in all contexts (except slurmd).
+.TP
+.B slurm_spank_slurmd_init
+Called at slurmd initialization.
+.TP
+.B slurm_spank_job_prolog
+Called just before job prolog.
 .TP
 .B slurm_spank_init_post_opt
 Called post option processing in all contexts.
@@ -97,6 +103,12 @@ the user task is executed. (remote context only)
 .B slurm_spank_task_exit
 Called for each task as its exit status is collected by SLURM.
 (remote context only)
+.TP
+.B slurm_spank_job_epilog
+Called just before the job epilog.
+.TP
+.B slurm_spank_slurmd_exit
+Called in slurmd just before the daemon exits.
 .TP
 .B slurm_spank_exit
 Called once just before \fBslurmstepd\fR exits in remote context.
@@ -226,6 +238,15 @@ Registers a single option \fIspankopt\fR to SLURM. See \fISPANK OPTIONS\fR
 below for the format of the \fIspankopt\fR parameter. This method is
 only valid from the \fBslurm_spank_init\fR hook in local and allocator
 context.
+.TP
+.BI getopt " (spankopt) "
+Checks for supplied option \fIspankopt\fR in the current context. This
+is an alternative to using a callback function and global variable in
+normal spank callbacks. This function can only be used after options have
+been processed (i.e. after \fBslurm_spank_init\fR in most contexts). In 
+\fBjob_script\fR context, \fBspank:getopt\fR is the \fIonly\fR supported
+method to check for supplied options (that is, from \fBslurm_spank_job_prolog\fR
+and \fBslurm_spank_job_epilog\fR).
 .LP
 In addition to the \fBspank\fR handle passed to spank-lua functions,
 spank-lua scripts also have access to utility functions and values in
@@ -313,6 +334,9 @@ for example:
     }
 
 .fi
+
+When \fBspank:getopt\fR is supported, the callback function \fIcb\fR is
+optional, since the \fBgetopt\fR function may be used as an alternative.
 
 .SH EXAMPLE
 
