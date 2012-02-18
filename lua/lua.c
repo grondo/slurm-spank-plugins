@@ -724,6 +724,50 @@ static int l_spank_option_register (lua_State *L)
     return (rc);
 }
 
+#if HAVE_SPANK_OPTION_GETOPT
+static int l_spank_option_getopt (lua_State *L)
+{
+    spank_t sp;
+    spank_err_t err;
+    char *optarg;
+    struct lua_script *script;
+    struct lua_script_option *opt;
+
+    sp = lua_getspank (L, 1);
+    if (!lua_istable (L, 2))
+        return luaL_error (L,
+                "Expected table argument to spank_option_getopt");
+
+    script = list_find_first (lua_script_list,
+                              (ListFindF) find_script_by_state,
+                              (void *) L);
+    if (!script)
+        return luaL_error (L,
+                "Unable to determine script from lua state!");
+
+    opt = lua_script_option_create (script, 2);
+    err = spank_option_getopt (sp, &opt->s_opt, &optarg);
+    lua_script_option_destroy (opt);
+
+    lua_pop (L, 2);
+    if (err != ESPANK_SUCCESS) {
+        if (err == ESPANK_ERROR)
+            return l_spank_error_msg (L, "Option unused");
+        else
+            return l_spank_error (L, err);
+    }
+
+    if (optarg == NULL)
+        lua_pushboolean (L, 1);
+    else
+        lua_pushstring (L, optarg);
+
+    return (1);
+}
+#endif /* if HAVE_SPANK_OPTION_GETOPT */
+
+
+
 static int l_spank_context (lua_State *L)
 {
     switch (spank_context ()) {
@@ -762,6 +806,9 @@ static int l_spank_context (lua_State *L)
 static const struct luaL_Reg spank_functions [] = {
     { "register_option",      l_spank_option_register },
     { "get_item",             l_spank_get_item },
+#if HAVE_SPANK_OPTION_GETOPT
+    { "getopt",               l_spank_option_getopt },
+#endif
     { "getenv",               l_spank_getenv },
     { "setenv",               l_spank_setenv },
     { "unsetenv",             l_spank_unsetenv },
