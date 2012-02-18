@@ -164,6 +164,7 @@ make \
   %{?_with_llnl_plugins:BUILD_LLNL_ONLY=1} \
   %{?_with_cpuset:BUILD_CPUSET=1} \
   %{?_with_lua:WITH_LUA=1} \
+  %{?chaos:HAVE_SPANK_OPTION_GETOPT=1} \
   CFLAGS="$RPM_OPT_FLAGS" 
 
 %if %{_with lua}
