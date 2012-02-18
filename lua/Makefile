@@ -4,6 +4,10 @@ PLUGINS = \
 SUBDIRS = \
    lua-schedutils
 
+ifeq ($(HAVE_SPANK_OPTION_GETOPT), 1)
+  EXTRA_CFLAGS = -DHAVE_SPANK_OPTION_GETOPT
+endif
+
 all: $(PLUGINS) subdirs
 
 check: subdirs-check
@@ -18,7 +22,7 @@ subdirs-check:
 .SUFFIXES: .c .o .so
 
 .c.o:
-	$(CC) -I.. $(CFLAGS) -o $@ -fPIC -c $<
+	$(CC) -I.. $(EXTRA_CFLAGS) $(CFLAGS) -o $@ -fPIC -c $<
 
 lua.so : lua.o ../lib/list.o
 	$(CC) -shared -o $*.so $^ -llua
