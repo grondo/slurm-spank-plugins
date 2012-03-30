@@ -163,11 +163,11 @@ the job environment with t[name] = val  for each environment entry
 
 For some specific items, \fBget_item\fR will return additional
 values following the raw item value. Currently, the only item
-for which this is true is \fBS_TASK_EXIT_CODE\fR:
+for which this is true is \fBS_TASK_EXIT_STATUS\fR:
 .nf
 
   \fIstatus\fR, \fIexitcode\fR, \fItermsig\fR, \fIcore\fR =
-      spank:get_item ("\fBS_TASK_EXIT_CODE\fR")
+      spank:get_item ("\fBS_TASK_EXIT_STATUS\fR")
 
 .fi
 Where \fIstatus\fR is the raw exit status as reported by \fBwait\fR(2),
@@ -182,7 +182,7 @@ about the exiting task, you might run:
     local fmt = string.format
     local msg
     local _, exitcode, termsig, core =
-        spank:get_item ("S_TASK_EXIT_CODE")
+        spank:get_item ("S_TASK_EXIT_STATUS")
 
     if exitcode then
         msg = fmt ("Exited with code %d\\n", exitcode)
