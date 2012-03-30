@@ -1,4 +1,8 @@
-Version 0.22 (2011-12-19):
+Version 0.23 (2012-03-30):
+- lua: Fix spank-lua(8) manpage reference to S_TASK_EXIT_CODE
+- lua: Remove explicit newlines from debug meessages.
+
+Version 0.22 (2012-02-18):
 - lua: support job_prolog and job_epilog callbacks
 - lua: support slurmd_init and slurmd_exit callbacks
 - lua: add support for spank_option_getopt (spank:getopt)
