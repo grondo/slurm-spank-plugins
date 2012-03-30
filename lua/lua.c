@@ -567,7 +567,7 @@ static int lua_spank_option_callback (int val, const char *optarg, int remote)
     lua_pushstring (L, optarg);
     lua_pushboolean (L, remote);
 
-    slurm_debug ("spank/lua: %s: callback %s for option %s optarg=%s\n",
+    slurm_debug ("spank/lua: %s: callback %s for option %s optarg=%s",
             o->script->path, o->l_function, o->s_opt.name,
             optarg ? optarg : "nil");
 
@@ -1069,7 +1069,7 @@ static void lua_script_destroy (struct lua_script *s)
 
 static int ef (const char *p, int eerrno)
 {
-    slurm_error ("spank/lua: glob: %s: %s\n", p, strerror (eerrno));
+    slurm_error ("spank/lua: glob: %s: %s", p, strerror (eerrno));
     return (-1);
 }
 
@@ -1238,7 +1238,7 @@ int spank_lua_init (spank_t sp, int ac, char *av[])
 
     lua_script_list = lua_script_list_create (global_L, av[0]);
     if (lua_script_list == NULL) {
-        slurm_verbose ("spank/lua: No files found in %s\n", av[0]);
+        slurm_verbose ("spank/lua: No files found in %s", av[0]);
         return (0);
     }
 
