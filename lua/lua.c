@@ -383,8 +383,6 @@ static int l_spank_get_item (lua_State *L)
     if (item < 0)
         return luaL_error (L,"Invalid spank item %s", lua_tostring (L, 2));
 
-    lua_pop (L, 2);
-
     switch (item) {
         case S_JOB_UID:
         case S_JOB_GID:
