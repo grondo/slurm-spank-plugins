@@ -420,7 +420,7 @@ static int l_spank_get_item (lua_State *L)
             return l_spank_get_exit_status (L, sp);
     }
 
-    return (0);
+    return luaL_error (L, "Unhandled spank item: %s", lua_tostring (L, 2));
 }
 
 typedef spank_err_t (*setenv_f) (spank_t, const char *, const char *, int);
