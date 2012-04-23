@@ -415,6 +415,8 @@ static int l_spank_get_item (lua_State *L)
             return l_spank_get_item_gids (L, sp);
         case S_JOB_PID_TO_GLOBAL_ID:
         case S_JOB_PID_TO_LOCAL_ID:
+        case S_JOB_LOCAL_TO_GLOBAL_ID:
+        case S_JOB_GLOBAL_TO_LOCAL_ID:
             return l_spank_id_query (L, sp, item);
         case S_TASK_EXIT_STATUS:
             return l_spank_get_exit_status (L, sp);
