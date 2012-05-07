@@ -1,3 +1,7 @@
+Version 0.24 (2012-05-07):
+- lua: Add missing support for S_GLOBAL_TO_LOCAL_ID and S_LOCAL_TO_GLOBAL_ID
+- lua: Fix S_JOB_PID_TO_LOCAL_ID functionality
+
 Version 0.23 (2012-03-30):
 - lua: Fix spank-lua(8) manpage reference to S_TASK_EXIT_CODE
 - lua: Remove explicit newlines from debug meessages.
