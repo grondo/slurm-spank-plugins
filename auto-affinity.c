@@ -545,6 +545,23 @@ static int job_is_exclusive (spank_t sp)
     return (n == ncpus);
 }
 
+/*
+ *  Return 1 if this step is a batch script
+ */
+static int job_step_is_batch (spank_t sp)
+{
+    uint32_t stepid;
+
+    if (spank_get_item (sp, S_JOB_STEPID, &stepid) != ESPANK_SUCCESS) {
+        slurm_error ("auto-affinity: Failed to get job stepid!");
+        return (0);
+    }
+
+    if (stepid == 0xfffffffe)
+        return (1);
+    return (0);
+}
+
 
 /*****************************************************************************
  *
@@ -606,6 +623,15 @@ int slurm_spank_exit (spank_t sp, int ac, char **av)
 int slurm_spank_user_init (spank_t sp, int ac, char **av)
 {
     if (!spank_remote (sp))
+        return (0);
+
+    /*
+     *  In some versions of SLURM, batch script job steps appear as
+     *   if the user explicitly set --cpus-per-task, and this may
+     *   cause unexpected behavior. It is much safer to just disable
+     *   auto-affinity behavior for batch scripts.
+     */
+    if (job_step_is_batch (sp))
         return (0);
 
     /*  Enable CPU affinity operation only if we make it through
