@@ -1,3 +1,6 @@
+Version 0.25 (2012-12-10):
+- auto-affinity: Disable auto-affinity for batch scripts.
+
 Version 0.24 (2012-05-07):
 - lua: Add missing support for S_GLOBAL_TO_LOCAL_ID and S_LOCAL_TO_GLOBAL_ID
 - lua: Fix S_JOB_PID_TO_LOCAL_ID functionality
