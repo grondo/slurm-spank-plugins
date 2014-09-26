@@ -870,13 +870,15 @@ int print_sym (struct sym *s, void *arg)
 void dump_symbols (void)
 {
     log_msg ("Dumping symbols\n");
-    list_for_each (symtab, (ListForF) print_sym, NULL);
+    if (symtab)
+      list_for_each (symtab, (ListForF) print_sym, NULL);
 }
 
 void dump_keywords (void)
 {
     log_msg ("Dumping keywords\n");
-    list_for_each (keytab, (ListForF) print_sym, NULL);
+    if (keytab)
+      list_for_each (keytab, (ListForF) print_sym, NULL);
 }
 
 /****************************************************************************

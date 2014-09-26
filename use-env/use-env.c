@@ -28,6 +28,8 @@
 #include <string.h>
 #include <dlfcn.h>
 
+#include <pwd.h>
+
 #include <slurm/spank.h>
 
 #include "use-env.h"
@@ -37,6 +39,11 @@
 
 #define NO_SEARCH_SYSTEM 1<<0
 #define NO_SEARCH_USER   1<<1
+
+#ifndef SYSCONFDIR
+#define SYSCONFDIR   "/etc/slurm/"
+#endif
+
 
 SPANK_PLUGIN(use-env, 1)
 
@@ -76,7 +83,7 @@ struct spank_option spank_options[] =
 {
     { "use-env", "[name]",
       "Read env from ~/.slurm/environment/[name] or "
-     "/etc/slurm/environment/[name]", 1, 0,
+      SYSCONFDIR "/environment/[name]", 1, 0,
       (spank_opt_cb_f) use_env_opt_process
     },
     SPANK_OPTIONS_TABLE_END
@@ -265,10 +272,10 @@ env_override_file_search (char *path, size_t len, const char *name, int flags)
     }
 
     if (check_sys) {
-        snprintf (path, len, "/etc/slurm/environment/%s", name);
+        snprintf (path, len, SYSCONFDIR "/environment/%s", name);
         if (access (path, R_OK) >= 0)
             return (path);
-        snprintf (path, len, "/etc/slurm/env-%s.conf", name);
+        snprintf (path, len, SYSCONFDIR "/env-%s.conf", name);
         if (access (path, R_OK) >= 0)
             return (path);
     }
@@ -415,6 +422,8 @@ static int set_argv_keywords (spank_t sp)
 
 static int define_all_keywords (spank_t sp)
 {
+    struct passwd *pw;
+    uid_t uid;
     /*
      *  These keywords are only accessible from this context
      */
@@ -438,6 +447,18 @@ static int define_all_keywords (spank_t sp)
     if (define_use_env_keyword (sp, "SLURM_LOCALID", S_TASK_ID) < 0)
         return (-1);
     if (define_use_env_keyword (sp, "SLURM_NODEID", S_JOB_NODEID) < 0)
+        return (-1);
+    if (define_use_env_keyword (sp, "SLURM_JOBUID", S_JOB_UID) < 0)
+        return (-1);
+    if (spank_get_item (sp, S_JOB_UID, &uid) != ESPANK_SUCCESS) {
+        slurm_error ("use-env: spank_get_item failed for S_JOB_UID\n");
+        return (-1);
+    }
+    if (!(pw = getpwuid (uid))) {
+        slurm_error ("use-env: Error looking up uid in /etc/passwd");
+        return (-1);
+    }
+    if (keyword_define ("SLURM_JOB_USERNAME", pw->pw_name) == NULL)
         return (-1);
 
     return (0);

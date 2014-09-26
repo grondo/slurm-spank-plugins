@@ -1,9 +1,12 @@
 
 LIBDIR ?= /usr/lib$(shell uname -m | grep -q x86_64 && echo 64)
 
+sysconfdir ?= /etc/slurm/
+
 OBJS   := lex.yy.o use-env-parser.o ../lib/list.o log_msg.o ../lib/split.o
 HDRS   := use-env.h ../lib/list.h ../lib/split.h log_msg.h use-env-parser.h
 SHOPTS := -shared -Wl,--version-script=version.map
+DEFS   := -DSYSCONFDIR=\"$(sysconfdir)\"
 
 
 all: use-env.so test
@@ -22,10 +25,10 @@ check: test
 	./test -f test.conf
 
 .c.o :
-	$(CC) -ggdb -I../lib -Wall $(CFLAGS) -o $@ -fPIC -c $< 
+	$(CC) $(DEFS) -ggdb -I../lib -Wall $(CFLAGS) -o $@ -fPIC -c $<
 
 use-env-parser.c use-env-parser.h : use-env-parser.y
-	bison -d -o use-env-parser.c $< 
+	bison -d -o use-env-parser.c $<
 
 lex.yy.c : use-env-parser.l use-env-parser.h 
 	lex $<

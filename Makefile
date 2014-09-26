@@ -1,5 +1,7 @@
 PACKAGE    ?= slurm-spank-plugins
 
+sysconfdir ?= /etc/slurm/
+
 LIBNAME    ?= lib$(shell uname -m | grep -q x86_64 && echo 64)
 LIBDIR     ?= /usr/$(LIBNAME)
 BINDIR     ?= /usr/bin
