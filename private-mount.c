@@ -23,6 +23,7 @@
 
 /* private-mount.c - mount fs from /etc/slurm/fstab privately for job/task */
 
+#define _GNU_SOURCE
 #include <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
