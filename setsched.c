@@ -106,11 +106,11 @@ static int _setsched_opt_process (int val, const char *optarg, int remote)
 
 	if (strncmp ("no", optarg, 2) == 0) {
 	        setsched_default=0;
-		xdebug("setsched: disabled on user request",optarg);
+		xdebug("setsched: disabled on user request");
 	}
 	else if (strncmp ("yes", optarg, 3) == 0) {
 	        setsched_default=1;
-		xdebug("setsched: enabled on user request",optarg);
+		xdebug("setsched: enabled on user request");
 	}
 	else if (strncmp ("auto", optarg, 4) != 0) {
 		xerror ("setsched: bad parameter %s", optarg);
@@ -208,13 +208,13 @@ int slurm_spank_task_post_fork (spank_t sp, int ac, char **av)
 		status = sched_setscheduler(pid, pol, &spar);
 		if (status < 0) {
 			xerror("setsched: unable to set scheduling "
-			       "policy of task%d pid %ld : %s",
+			       "policy of task%d pid %d : %s",
 			       taskid, pid,strerror(errno));
 		}
 		else 
 		        xinfo("setsched: "
-			      "scheduling policy of task%d pid %ld is "
-			      "now %ld (prio=%d)",
+			      "scheduling policy of task%d pid %d is "
+			      "now %d (prio=%d)",
 			      taskid, pid, pol, setsched_prio);
 	}
 

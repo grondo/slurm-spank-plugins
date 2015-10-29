@@ -23,6 +23,7 @@
 
 /* private-mount.c - mount fs from /etc/slurm/fstab privately for job/task */
 
+#define _GNU_SOURCE
 #include <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,9 +57,9 @@ SPANK_PLUGIN(mount, 1)
 static int _opt_fs_namespace (int val, const char *optarg, int remote);
 static int _opt_private_mount (int val, const char *optarg, int remote);
 
-typedef enum { NS_SYSTEM, NS_TASK, NS_JOB } mode_t;
+typedef enum { NS_SYSTEM, NS_TASK, NS_JOB } ns_mode_t;
 
-static mode_t ns_mode   = NS_SYSTEM;
+static ns_mode_t ns_mode   = NS_SYSTEM;
 static List mounts      = NULL;
 static int allowed      = 0;
 
@@ -123,11 +124,11 @@ static int _lookup (char *name)
     return (rc);
 }
 
-static int _mkdir_p (char *path, mode_t mode)
+static int _mkdir_p (char *path, ns_mode_t mode)
 {
     char *cpy;
     int rc;
-    mode_t saved_umask;
+    ns_mode_t saved_umask;
     struct stat sb;
 
     saved_umask = umask(022);
