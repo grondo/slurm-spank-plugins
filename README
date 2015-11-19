@@ -71,6 +71,17 @@ the load on global NFS servers.
 It has not been used in production.
 
 
+mpibind
+-----------------
+
+This plugin is a re-implementation of Edgar A. Leon Borja's mpibind3
+script as a spank plugin.  It provides a different method of binding
+tasks and threads to processors and GPUs than the auto-affinity plugin
+above.  The plugin attempts to make the optimal placement decisions
+for the user.  It offers simple options to increase verbosity as well
+as confine the binding operation to a specific set of CPUs.
+
+
 iotrace
 -----------------
 
