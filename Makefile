@@ -18,6 +18,7 @@ PLUGINS = \
    iotrace.so \
    tmpdir.so \
    auto-affinity.so \
+   mpibind.so \
    pty.so \
    addr-no-randomize.so \
    preserve-env.so \
@@ -56,6 +57,9 @@ system-safe-preload.so : system-safe-preload.o
 
 auto-affinity.so : auto-affinity.o lib/split.o lib/list.o lib/fd.o
 	$(CC) -shared -o $*.so auto-affinity.o lib/split.o lib/list.o -lslurm
+
+mpibind.so : mpibind.o lib/split.o lib/list.o lib/fd.o
+	$(CC) -shared -o $*.so mpibind.o lib/split.o lib/list.o -lslurm -lhwloc
 
 preserve-env.so : preserve-env.o lib/list.o
 	$(CC) -shared -o $*.so preserve-env.o lib/list.o

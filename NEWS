@@ -1,3 +1,6 @@
+Version 0.27 (2015-11-19):
+- add mpibind
+
 Version 0.26 (2015-10-29):
 - setsched: fix printf compiler warnings
 - private-mount: Set _GNU_SOURCE for unshare support
