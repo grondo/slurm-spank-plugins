@@ -51,7 +51,7 @@ Source0:    %{name}-%{version}.tgz
 Requires: slurm
 Obsoletes: chaos-spankings
 
-BuildRequires: slurm-devel bison flex
+BuildRequires: slurm-devel bison flex hwloc-devel
 
 %if %{_with cpuset}
 BuildRequires: libbitmask libcpuset
@@ -237,6 +237,7 @@ fi
 %{_libdir}/slurm/auto-affinity.so
 %{_libdir}/slurm/pty.so 
 %{_libdir}/slurm/addr-no-randomize.so
+%{_libdir}/slurm/mpibind.so
 %{_libdir}/system-safe-preload.so
 %{_libexecdir}/%{name}/overcommit-util
 %{_libdir}/slurm/setsched.so
