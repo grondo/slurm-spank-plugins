@@ -617,6 +617,17 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         printf ("mpibind: level size: %u, local size: %u, pus per task %u\n",
                 level_size, local_size, num_pus_per_task);
 
+    /* If the user did not set it, we set OMP_NUM_THREADS to the
+     * number of cores per task. */
+    if (!num_threads) {
+        num_threads = num_pus_per_task;
+        asprintf (&str, "%u", num_threads);
+        spank_setenv (sp, "OMP_NUM_THREADS", str, 0);
+        if (verbose > 2)
+            printf ("mpibind: setting OMP_NUM_THREADS to %s\n", str);
+        free (str);
+    }
+
     index = (local_rank * num_pus_per_task) % level_size;
 
     for (i = index; i < index + num_pus_per_task; i++) {
@@ -657,13 +668,11 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
     }
     free (str);
 
-    if (num_threads) {
-        if ((str = get_gomp_str (cpuset))) {
-            spank_setenv (sp, "GOMP_CPU_AFFINITY", str, 1);
-            if (verbose > 1)
-                printf ("mpibind: GOMP_CPU_AFFINITY=%s\n", str);
-            free (str);
-        }
+    if ((str = get_gomp_str (cpuset))) {
+        spank_setenv (sp, "GOMP_CPU_AFFINITY", str, 1);
+        if (verbose > 1)
+            printf ("mpibind: GOMP_CPU_AFFINITY=%s\n", str);
+        free (str);
     }
 
     if (gpus) {
