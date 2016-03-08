@@ -43,7 +43,7 @@ static const char mpibind_help [] =
 mpibind: Automatically assign CPU and GPU affinity using best-guess defaults.\n\
 \n\
 The default behavior attempts to bind MPI tasks to specific processing\n\
-units.  If OMP_NUM_THREDS is set, each thread will be similarly bound\n\
+units.  If OMP_NUM_THREADS is set, each thread will be similarly bound\n\
 to a processing unit.  MPI+OpenMP programs must set OMP_NUM_THREADS.\n\
 \n\
 Option Usage: --mpibind[=args...]\n\
@@ -208,6 +208,19 @@ static int get_local_env ()
     char *val = NULL;
     int32_t rc = -1;
 
+    if ((val = getenv ("MPIBIND"))) {
+        if (verbose > 1)
+            printf ("mpibind: processing MPIBIND=%s\n", val);
+        /* This next call is essentially a validation exercise.  The
+         * MPIBIND options will be parsed and validated and the user
+         * will be informed or alerted at their requested
+         * verbosity. The actual options specified in MPIBIND will be
+         * processed in get_remote_env(). */
+        rc = parse_user_option (0, val, 0);
+    } else {
+        rc = 0;
+    }
+
     /* Need the number of threads for the 'mem' policy */
     if ((val = getenv ("OMP_NUM_THREADS"))) {
         num_threads = strtol (val, NULL, 10);
@@ -220,19 +233,6 @@ static int get_local_env ()
         if (verbose)
             printf ("mpibind: OMP_NUM_THREADS not defined; assuming MPI-only "
                     "program\n");
-    }
-
-    if ((val = getenv ("MPIBIND"))) {
-        if (verbose > 1)
-            printf ("mpibind: processing MPIBIND=%s\n", val);
-        /* This next call is essentially a validation exercise.  The
-         * MPIBIND options will be parsed and validated and the user
-         * will be informed or alerted at their requested
-         * verbosity. The actual options specified in MPIBIND will be
-         * processed in get_remote_env(). */
-        rc = parse_user_option (0, val, 0);
-    } else {
-        rc = 0;
     }
 
     return rc;
