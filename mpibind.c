@@ -125,7 +125,7 @@ static int parse_option (const char *opt, int32_t remote)
     else if (!strncmp (opt, "vv", 3)) {
         verbose = 3;
         if (remote)
-            slurm_debug2 ("setting 'vv' verbosity");
+            slurm_debug2 ("mpibind: setting 'vv' verbosity");
         else
             printf ("setting 'vv' verbosity\n");
     } else if (!strncmp (opt, "v", 2) || !strncmp (opt, "verbose", 8))
@@ -250,7 +250,7 @@ static int get_remote_env (spank_t sp)
         if (rank)
             verbose = 0;
     } else {
-        slurm_error ("Failed to retrieve global rank from environment");
+        slurm_error ("mpibind: Failed to retrieve global rank from environment");
         goto ret;
     }
 
@@ -262,7 +262,7 @@ static int get_remote_env (spank_t sp)
         if (verbose > 1)
             slurm_debug ("mpibind: retrieved local rank %u", local_rank);
     } else {
-        slurm_error ("Failed to retrieve local rank from environment");
+        slurm_error ("mpibind: Failed to retrieve local rank from environment");
         goto ret;
     }
 
@@ -271,7 +271,7 @@ static int get_remote_env (spank_t sp)
         if (verbose > 1)
             slurm_debug ("mpibind: retrieved local size %u", local_size);
     } else {
-        slurm_error ("Failed to retrieve local size from environment");
+        slurm_error ("mpibind: Failed to retrieve local size from environment");
         goto ret;
     }
 
@@ -625,8 +625,8 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         num_pus_per_task = 1.0;
 
     if (!local_rank && verbose > 2)
-        printf ("mpibind: level size: %u, local size: %u, pus per task %f\n",
-                level_size, local_size, num_pus_per_task);
+        slurm_debug2 ("mpibind: level size: %u, local size: %u, pus per task "
+                      "%f\n", level_size, local_size, num_pus_per_task);
 
     /* If the user did not set it, we set OMP_NUM_THREADS to the
      * number of cores per task. */
@@ -637,7 +637,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         asprintf (&str, "%u", num_threads);
         spank_setenv (sp, "OMP_NUM_THREADS", str, 0);
         if (verbose > 2)
-            printf ("mpibind: setting OMP_NUM_THREADS to %s\n", str);
+            slurm_debug2 ("mpibind: setting OMP_NUM_THREADS to %s\n", str);
         free (str);
     }
 
@@ -670,27 +670,27 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         numaobjs = hwloc_get_nbobjs_inside_cpuset_by_type (topology, cpuset,
                                                            HWLOC_OBJ_NODE);
         if ((local_size < numaobjs) && (num_threads > 1)) {
-            printf ("mpibind: Consider using at least %d MPI tasks per node\n",
-                    numaobjs);
+            slurm_verbose ("mpibind: Consider using at least %d MPI tasks per "
+                           "node\n", numaobjs);
         }
     }
 
     hwloc_bitmap_asprintf (&str, cpuset);
     if (verbose > 2)
-        printf ("mpibind: resulting cpuset %s\n", str);
+        slurm_debug2 ("mpibind: resulting cpuset %s\n", str);
 
     if (hwloc_set_cpubind (topology, cpuset, 0)) {
         slurm_error ("mpibind: could not bind to cpuset %s: %s", str,
                      strerror(errno));
     } else if (verbose > 2) {
-        printf ("mpibind: bound cpuset %s\n", str);
+        slurm_debug2 ("mpibind: bound cpuset %s\n", str);
     }
     free (str);
 
     if ((str = get_gomp_str (cpuset))) {
         spank_setenv (sp, "GOMP_CPU_AFFINITY", str, 1);
         if (verbose > 1)
-            printf ("mpibind: GOMP_CPU_AFFINITY=%s\n", str);
+            slurm_debug ("mpibind: GOMP_CPU_AFFINITY=%s\n", str);
         free (str);
     }
 
@@ -698,7 +698,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         if  ((str = get_cuda_str (gpus, gpu_bits))) {
             spank_setenv (sp, "CUDA_VISIBLE_DEVICES", str, 1);
             if (verbose > 1)
-                printf ("mpibind: CUDA_VISIBLE_DEVICES=%s\n", str);
+                slurm_debug ("mpibind: CUDA_VISIBLE_DEVICES=%s\n", str);
             free (str);
         }
 
