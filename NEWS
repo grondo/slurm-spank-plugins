@@ -1,3 +1,8 @@
+Version 0.28 (2016-03-08)
+- Improve mpibind
+- Address problem reported in TOSS-3112 where tasks were not distributed
+  evenly to available NUMA nodes.
+
 Version 0.27 (2015-11-19):
 - add mpibind
 
