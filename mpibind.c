@@ -43,7 +43,7 @@ static const char mpibind_help [] =
 mpibind: Automatically assign CPU and GPU affinity using best-guess defaults.\n\
 \n\
 The default behavior attempts to bind MPI tasks to specific processing\n\
-units.  If OMP_NUM_THREDS is set, each thread will be similarly bound\n\
+units.  If OMP_NUM_THREADS is set, each thread will be similarly bound\n\
 to a processing unit.  MPI+OpenMP programs must set OMP_NUM_THREADS.\n\
 \n\
 Option Usage: --mpibind[=args...]\n\
@@ -69,13 +69,15 @@ E.g., MPIBIND=w.0-9\n\
  ****************************************************************************/
 
 static hwloc_topology_t topology;
-static int32_t disabled = 0;    /* True if disabled by --mpibind=off          */
-static int32_t enabled = 1;     /* True if enabled by configuration           */
+static int32_t disabled = 0;       /* True if disabled by --mpibind=off       */
+static int32_t enabled = 1;        /* True if enabled by configuration        */
 static int32_t verbose = 0;
-static uint32_t cpus = 0;       /* a bitmap of <range> specified cores        */
-static uint32_t level_size = 0; /* the number of available cores on this node */
-static uint32_t local_rank = 0; /* the rank relative to this node             */
-static uint32_t local_size = 0; /* the number of tasks to run on this node    */
+static uint32_t cpus = 0;          /* a bitmap of <range> specified cores     */
+static uint32_t level_size = 0;    /* number of processing units available    */
+static uint32_t local_rank = 0;    /* rank relative to this node              */
+static uint32_t local_size = 0;    /* number of tasks to run on this node     */
+static uint32_t local_threads = 0; /* number of threads to run on this node   */
+static uint32_t num_cores = 0;     /* number of physical cores available      */
 static uint32_t num_threads = 0;
 static uint32_t rank = 0;
 
@@ -123,7 +125,7 @@ static int parse_option (const char *opt, int32_t remote)
     else if (!strncmp (opt, "vv", 3)) {
         verbose = 3;
         if (remote)
-            slurm_debug2 ("setting 'vv' verbosity");
+            slurm_debug2 ("mpibind: setting 'vv' verbosity");
         else
             printf ("setting 'vv' verbosity\n");
     } else if (!strncmp (opt, "v", 2) || !strncmp (opt, "verbose", 8))
@@ -208,6 +210,19 @@ static int get_local_env ()
     char *val = NULL;
     int32_t rc = -1;
 
+    if ((val = getenv ("MPIBIND"))) {
+        if (verbose > 1)
+            printf ("mpibind: processing MPIBIND=%s\n", val);
+        /* This next call is essentially a validation exercise.  The
+         * MPIBIND options will be parsed and validated and the user
+         * will be informed or alerted at their requested
+         * verbosity. The actual options specified in MPIBIND will be
+         * processed in get_remote_env(). */
+        rc = parse_user_option (0, val, 0);
+    } else {
+        rc = 0;
+    }
+
     /* Need the number of threads for the 'mem' policy */
     if ((val = getenv ("OMP_NUM_THREADS"))) {
         num_threads = strtol (val, NULL, 10);
@@ -220,19 +235,6 @@ static int get_local_env ()
         if (verbose)
             printf ("mpibind: OMP_NUM_THREADS not defined; assuming MPI-only "
                     "program\n");
-    }
-
-    if ((val = getenv ("MPIBIND"))) {
-        if (verbose > 1)
-            printf ("mpibind: processing MPIBIND=%s\n", val);
-        /* This next call is essentially a validation exercise.  The
-         * MPIBIND options will be parsed and validated and the user
-         * will be informed or alerted at their requested
-         * verbosity. The actual options specified in MPIBIND will be
-         * processed in get_remote_env(). */
-        rc = parse_user_option (0, val, 0);
-    } else {
-        rc = 0;
     }
 
     return rc;
@@ -248,7 +250,7 @@ static int get_remote_env (spank_t sp)
         if (rank)
             verbose = 0;
     } else {
-        slurm_error ("Failed to retrieve global rank from environment");
+        slurm_error ("mpibind: Failed to retrieve global rank from environment");
         goto ret;
     }
 
@@ -260,7 +262,7 @@ static int get_remote_env (spank_t sp)
         if (verbose > 1)
             slurm_debug ("mpibind: retrieved local rank %u", local_rank);
     } else {
-        slurm_error ("Failed to retrieve local rank from environment");
+        slurm_error ("mpibind: Failed to retrieve local rank from environment");
         goto ret;
     }
 
@@ -269,7 +271,7 @@ static int get_remote_env (spank_t sp)
         if (verbose > 1)
             slurm_debug ("mpibind: retrieved local size %u", local_size);
     } else {
-        slurm_error ("Failed to retrieve local size from environment");
+        slurm_error ("mpibind: Failed to retrieve local size from environment");
         goto ret;
     }
 
@@ -413,15 +415,18 @@ ret:
 static char *get_gomp_str (hwloc_cpuset_t cpuset)
 {
     char *str = NULL;
-    int32_t i;
+    int32_t i, j;
 
     i = hwloc_bitmap_first (cpuset);
-    while (i != -1) {
+    j = num_threads;
+
+    while ((i != -1) && (j > 0)) {
         if (str)
             asprintf (&str, "%s,%d", str, i);
         else
             asprintf (&str, "%d", i);
         i = hwloc_bitmap_next (cpuset, i);
+        j--;
     }
 
     return str;
@@ -504,16 +509,16 @@ int slurm_spank_user_init (spank_t sp, int32_t ac, char **av)
 int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
 {
     char *str;
+    float num_pus_per_task;
     hwloc_cpuset_t *cpusets = NULL;
     hwloc_cpuset_t *gpusets = NULL;
     hwloc_cpuset_t cpuset;
     hwloc_obj_t obj;
     int32_t gpus = 0;
     int32_t i;
+    int32_t index;
     int32_t numaobjs;
-    int64_t index;
     uint32_t gpu_bits = 0;
-    uint32_t num_pus_per_task;
 
     if (!spank_remote (sp))
         return (0);
@@ -527,6 +532,10 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         display_cpubind ("starting binding");
     }
 
+    local_threads = local_size;
+    if (num_threads)
+        local_threads *= num_threads;
+
     cpuset = hwloc_bitmap_alloc();
 
     if (cpus) {
@@ -534,6 +543,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         int j = 0;
 
         /* level_size has been set in process_opt() */
+        num_cores = level_size;
         cpusets = calloc (level_size, sizeof (hwloc_cpuset_t));
 
         for (i = 0; i < coreobjs; i++) {
@@ -550,10 +560,11 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
     } else {
         uint32_t depth;
         uint32_t topodepth = hwloc_topology_get_depth (topology);
+        num_cores = hwloc_get_nbobjs_by_type (topology, HWLOC_OBJ_CORE);
 
         for (depth = 0; depth < topodepth; depth++) {
             level_size = hwloc_get_nbobjs_by_depth (topology, depth);
-            if (level_size >= local_size)
+            if (level_size >= local_threads)
                 break;
         }
         if (depth == topodepth)
@@ -609,17 +620,36 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         decimate_gpusets (gpusets, numaobjs, gpus);
     }
 
-    num_pus_per_task = level_size / local_size;
-    if (!num_pus_per_task)
-        num_pus_per_task = 1;
+    num_pus_per_task = (float) level_size / local_size;
+    if (num_pus_per_task < 1.0)
+        num_pus_per_task = 1.0;
 
     if (!local_rank && verbose > 2)
-        printf ("mpibind: level size: %u, local size: %u, pus per task %u\n",
-                level_size, local_size, num_pus_per_task);
+        slurm_debug2 ("mpibind: level size: %u, local size: %u, pus per task "
+                      "%f\n", level_size, local_size, num_pus_per_task);
 
-    index = (local_rank * num_pus_per_task) % level_size;
+    /* If the user did not set it, we set OMP_NUM_THREADS to the
+     * number of cores per task. */
+    if (!num_threads) {
+        num_threads = num_cores / local_size;
+        if (!num_threads)
+            num_threads = 1;
+        asprintf (&str, "%u", num_threads);
+        spank_setenv (sp, "OMP_NUM_THREADS", str, 0);
+        if (verbose > 2)
+            slurm_debug2 ("mpibind: setting OMP_NUM_THREADS to %s\n", str);
+        free (str);
+    }
 
-    for (i = index; i < index + num_pus_per_task; i++) {
+    /*
+     * Note: num_pus_per_task is a float value.  The next few
+     * statements result in an even distribution of tasks to cores
+     * across the available cores and also guarantees an even
+     * distribution of tasks to NUMA nodes.
+     */
+    index = (int32_t) (local_rank * num_pus_per_task);
+
+    for (i = index; i < index + (int32_t) num_pus_per_task; i++) {
         hwloc_bitmap_or (cpuset, cpuset, cpusets[i]);
         if (gpus) {
             int32_t j;
@@ -640,37 +670,35 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         numaobjs = hwloc_get_nbobjs_inside_cpuset_by_type (topology, cpuset,
                                                            HWLOC_OBJ_NODE);
         if ((local_size < numaobjs) && (num_threads > 1)) {
-            printf ("mpibind: Consider using at least %d MPI tasks per node\n",
-                    numaobjs);
+            slurm_verbose ("mpibind: Consider using at least %d MPI tasks per "
+                           "node\n", numaobjs);
         }
     }
 
     hwloc_bitmap_asprintf (&str, cpuset);
     if (verbose > 2)
-        printf ("mpibind: resulting cpuset %s\n", str);
+        slurm_debug2 ("mpibind: resulting cpuset %s\n", str);
 
     if (hwloc_set_cpubind (topology, cpuset, 0)) {
         slurm_error ("mpibind: could not bind to cpuset %s: %s", str,
                      strerror(errno));
     } else if (verbose > 2) {
-        printf ("mpibind: bound cpuset %s\n", str);
+        slurm_debug2 ("mpibind: bound cpuset %s\n", str);
     }
     free (str);
 
-    if (num_threads) {
-        if ((str = get_gomp_str (cpuset))) {
-            spank_setenv (sp, "GOMP_CPU_AFFINITY", str, 1);
-            if (verbose > 1)
-                printf ("mpibind: GOMP_CPU_AFFINITY=%s\n", str);
-            free (str);
-        }
+    if ((str = get_gomp_str (cpuset))) {
+        spank_setenv (sp, "GOMP_CPU_AFFINITY", str, 1);
+        if (verbose > 1)
+            slurm_debug ("mpibind: GOMP_CPU_AFFINITY=%s\n", str);
+        free (str);
     }
 
     if (gpus) {
         if  ((str = get_cuda_str (gpus, gpu_bits))) {
             spank_setenv (sp, "CUDA_VISIBLE_DEVICES", str, 1);
             if (verbose > 1)
-                printf ("mpibind: CUDA_VISIBLE_DEVICES=%s\n", str);
+                slurm_debug ("mpibind: CUDA_VISIBLE_DEVICES=%s\n", str);
             free (str);
         }
 
