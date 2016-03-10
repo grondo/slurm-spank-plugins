@@ -538,6 +538,20 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
 
     cpuset = hwloc_bitmap_alloc();
 
+    /*
+     * The following creates an array of cpusets, one for each
+     * processing unit required.
+     *
+     * If the user has specified specific cores using the <range>
+     * option, 'cpus' will contain a bit map of those cores.  In that
+     * case, restrict the application to specific cores by only
+     * populating the cpuset array for those cores.
+     *
+     * Otherwise, search the resources by depth.  Descend only as far
+     * as we need to obtain at least one processing unit for each
+     * thread.
+     */
+
     if (cpus) {
         int32_t coreobjs = hwloc_get_nbobjs_by_type (topology, HWLOC_OBJ_CORE);
         int j = 0;
@@ -628,8 +642,10 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         slurm_debug2 ("mpibind: level size: %u, local size: %u, pus per task "
                       "%f\n", level_size, local_size, num_pus_per_task);
 
-    /* If the user did not set it, we set OMP_NUM_THREADS to the
-     * number of cores per task. */
+    /*
+     * If the user did not set it, set the OMP_NUM_THREADS environment
+     * variable to the number of cores this task will have.
+     */
     if (!num_threads) {
         num_threads = num_cores / local_size;
         if (!num_threads)
@@ -642,10 +658,14 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
     }
 
     /*
-     * Note: num_pus_per_task is a float value.  The next few
-     * statements result in an even distribution of tasks to cores
-     * across the available cores and also guarantees an even
-     * distribution of tasks to NUMA nodes.
+     * Create the cpuset to which this task will be bound.  The
+     * resulting cpuset will be the union of as many cpusets[]
+     * elements that can be dedicated exclusively to this task.
+     *
+     * Note: num_pus_per_task is a float value.  It allows us to
+     * select cpusets[] elements that span the full range of available
+     * cpusets[].  Otherwise there could be an uneven distribution of
+     * tasks to NUMA nodes for example.
      */
     index = (int32_t) (local_rank * num_pus_per_task);
 
@@ -687,6 +707,10 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
     }
     free (str);
 
+    /*
+     * Construct the list of cpus to which each thread will be bound
+     * and assign it to the GOMP_CPU_AFFINITY environment variable.
+     */
     if ((str = get_gomp_str (cpuset))) {
         spank_setenv (sp, "GOMP_CPU_AFFINITY", str, 1);
         if (verbose > 1)
@@ -694,6 +718,10 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         free (str);
     }
 
+    /*
+     * Perform an analogous population of the CUDA_VISIBLE_DEVICES
+     * environment variable that we did for GOMP_CPU_AFFINITY above.
+     */
     if (gpus) {
         if  ((str = get_cuda_str (gpus, gpu_bits))) {
             spank_setenv (sp, "CUDA_VISIBLE_DEVICES", str, 1);
