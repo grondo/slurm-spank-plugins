@@ -304,34 +304,31 @@ ret:
 static int32_t str2int (const char *str)
 {
     char *p;
-    long l = strtol (str, &p, 10);
+    long l = -1;
 
-    /*
-     * Support the basic cpu count format as well as the multi-node
-     * cpus (x nodes) format: e.g., SLURM_JOB_CPUS_PER_NODE=4(x2)
-     */
-    if (p && (*p != '(') && (*p != '\0'))
+    errno = 0;
+    l = strtol (str, &p, 10);
+
+    if ((errno) || (p && (*p != '\0')))
         return (-1);
 
     return ((int32_t) l);
 }
 
 /*
- *  Return 1 if job has allocated all CPUs on this node or, in case
- *  specific cpus were specified, the number of specified CPUs
+ *  Return 1 if job has allocated sufficient CPUs on this node
  */
 static int job_is_exclusive (spank_t sp)
 {
     char val[16];
     int32_t n;
 
-    if (spank_getenv (sp, "SLURM_JOB_CPUS_PER_NODE", val, sizeof (val)) !=
+    if (spank_getenv (sp, "SLURM_CPUS_ON_NODE", val, sizeof (val)) !=
         ESPANK_SUCCESS) {
-        fprintf (stderr, "mpibind: failed to find SLURM_JOB_CPUS_PER_NODE in "
-                 "env\n");
+        fprintf (stderr, "mpibind: failed to find SLURM_CPUS_ON_NODE in env\n");
         return (0);
     } else if ((n = str2int (val)) < 0) {
-        fprintf (stderr, "mpibind: SLURM_JOB_CPUS_PER_NODE=%s invalid\n", val);
+        fprintf (stderr, "mpibind: SLURM_CPUS_ON_NODE=%s invalid\n", val);
         return (0);
     }
 
@@ -465,7 +462,7 @@ int slurm_spank_init_post_opt (spank_t sp, int32_t ac, char **av)
 
 /*
  *  Use the slurm_spank_user_init callback to check for exclusivity
- *   becuase user options are processed prior to calling here.
+ *   because user options are processed prior to calling here.
  *   Otherwise, we would not be able to use the `verbose' flag.
  */
 int slurm_spank_user_init (spank_t sp, int32_t ac, char **av)

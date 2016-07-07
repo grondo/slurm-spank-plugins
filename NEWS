@@ -1,3 +1,6 @@
+Version 0.29 (2016-07-07)
+- mpibind: Replace use of SLURM_JOB_CPUS_PER_NODE with SLURM_CPUS_ON_NODE
+
 Version 0.28 (2016-03-08)
 - Improve mpibind
 - Address problem reported in TOSS-3112 where tasks were not distributed
