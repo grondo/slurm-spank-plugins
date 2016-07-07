@@ -301,6 +301,18 @@ ret:
     return rc;
 }
 
+/*
+ * str2int () is specialized to parse the SLURM_JOB_CPUS_PER_NODE
+ * value.  The format of the value can be:
+ *   a simple integer
+ *   a replicated integer, example:  36(x2)
+ *   a comma delimted combo of the both of the above, example: 20,13,1(x2)
+ *
+ * This function will return the simple interger if the value is one
+ * of the first two forms, but -1 if it is the third.  The rationalle
+ * is that we cannot accurately bind when not all of a node's CPUS
+ * have been allocated to the job.
+ */
 static int32_t str2int (const char *str)
 {
     char *p;
@@ -309,7 +321,7 @@ static int32_t str2int (const char *str)
     errno = 0;
     l = strtol (str, &p, 10);
 
-    if ((errno) || (p && (*p != '\0')))
+    if (errno || (p && (*p != '(') && (*p != '\0')))
         return (-1);
 
     return ((int32_t) l);
@@ -323,12 +335,14 @@ static int job_is_exclusive (spank_t sp)
     char val[16];
     int32_t n;
 
-    if (spank_getenv (sp, "SLURM_CPUS_ON_NODE", val, sizeof (val)) !=
+    if (spank_getenv (sp, "SLURM_JOB_CPUS_PER_NODE", val, sizeof (val)) !=
         ESPANK_SUCCESS) {
-        fprintf (stderr, "mpibind: failed to find SLURM_CPUS_ON_NODE in env\n");
+        fprintf (stderr, "mpibind: failed to find SLURM_JOB_CPUS_PER_NODE in "
+                 "env\n");
         return (0);
     } else if ((n = str2int (val)) < 0) {
-        fprintf (stderr, "mpibind: SLURM_CPUS_ON_NODE=%s invalid\n", val);
+        fprintf (stderr, "mpibind: disabled for SLURM_JOB_CPUS_PER_NODE=%s\n",
+                 val);
         return (0);
     }
 

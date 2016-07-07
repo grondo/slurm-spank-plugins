@@ -1,3 +1,9 @@
+Version 0.30 (2016-07-07)
+- mpibind: Revert to the use of SLURM_JOB_CPUS_PER_NODE.  SLURM_CPUS_ON_NODE is
+  not set where needed.  Changed the message from v0.28 to announce that mpibind
+  is being disabled (v0.28 said "invalid") when not all of a node's CPUs
+  were allocated to the job.
+
 Version 0.29 (2016-07-07)
 - mpibind: Replace use of SLURM_JOB_CPUS_PER_NODE with SLURM_CPUS_ON_NODE
 
