@@ -127,7 +127,7 @@ static int parse_option (const char *opt, int32_t remote)
         if (remote)
             slurm_debug2 ("mpibind: setting 'vv' verbosity");
         else
-            printf ("setting 'vv' verbosity\n");
+            printf ("mpibind: setting 'vv' verbosity\n");
     } else if (!strncmp (opt, "v", 2) || !strncmp (opt, "verbose", 8))
         verbose = 2;
     else if (!strncmp (opt, "w", 2))
@@ -337,12 +337,14 @@ static int job_is_exclusive (spank_t sp)
 
     if (spank_getenv (sp, "SLURM_JOB_CPUS_PER_NODE", val, sizeof (val)) !=
         ESPANK_SUCCESS) {
-        fprintf (stderr, "mpibind: failed to find SLURM_JOB_CPUS_PER_NODE in "
-                 "env\n");
+        if (verbose)
+            fprintf (stderr, "mpibind: failed to find SLURM_JOB_CPUS_PER_NODE "
+                     "in env\n");
         return (0);
     } else if ((n = str2int (val)) < 0) {
-        fprintf (stderr, "mpibind: disabled for SLURM_JOB_CPUS_PER_NODE=%s\n",
-                 val);
+        if (verbose)
+            fprintf (stderr, "mpibind: disabled for SLURM_JOB_CPUS_PER_NODE=%s"
+                     "\n", val);
         return (0);
     }
 
