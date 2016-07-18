@@ -210,6 +210,9 @@ static int get_local_env ()
     char *val = NULL;
     int32_t rc = -1;
 
+    if (disabled)
+        return 0;
+
     if ((val = getenv ("MPIBIND"))) {
         if (verbose > 1)
             printf ("mpibind: processing MPIBIND=%s\n", val);
@@ -244,6 +247,9 @@ static int get_remote_env (spank_t sp)
 {
     char  val[64];
     int32_t rc = -1;
+
+    if (disabled)
+        return 0;
 
     /* Turn off verbosity for all but rank 0 */
     if ((spank_get_item (sp, S_TASK_ID, &rank) == ESPANK_SUCCESS)) {
