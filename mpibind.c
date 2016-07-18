@@ -236,8 +236,7 @@ static int get_local_env ()
          * that OMP_NUM_THREADS was not set */
         num_threads = 0;
         if (verbose)
-            printf ("mpibind: OMP_NUM_THREADS not defined; assuming MPI-only "
-                    "program\n");
+            printf ("mpibind: OMP_NUM_THREADS not defined\n");
     }
 
     return rc;
@@ -292,8 +291,7 @@ static int get_remote_env (spank_t sp)
          * that OMP_NUM_THREADS was not set */
         num_threads = 0;
         if (verbose)
-            slurm_verbose ("mpibind: OMP_NUM_THREADS not defined, "
-                           "assuming MPI-only program");
+            slurm_verbose ("mpibind: OMP_NUM_THREADS not defined");
     }
 
     if (spank_getenv (sp, "MPIBIND", val, sizeof (val)) == ESPANK_SUCCESS) {
