@@ -55,7 +55,8 @@ Option Usage: --mpibind[=args...]\n\
   v(erbose)         Show warnings and more verbose info\n\
   vv                Show warnings and verbose debugging info\n\
   <range>           Restrict the application to specific cores, e.g., 0-7\n\
-  off               Disable all binding\n\
+  off               Disable binding\n\
+  on                Enable binding (used when the system default is off)\n\
 \n\
 The above options can also be specified in the environment variable: MPIBIND\n\
 E.g., MPIBIND=w.0-9\n\
@@ -120,7 +121,9 @@ static int parse_option (const char *opt, int32_t remote)
     int64_t start;
     int64_t end;
 
-    if (strncmp (opt, "off", 4) == 0)
+    if (strncmp (opt, "on", 3) == 0)
+        disabled = 0;
+    else if (strncmp (opt, "off", 4) == 0)
         disabled = 1;
     else if (!strncmp (opt, "vv", 3)) {
         verbose = 3;
@@ -471,6 +474,29 @@ static char *get_cuda_str (int32_t gpus, uint32_t gpu_bits)
  *  SPANK callback functions:
  *
  ****************************************************************************/
+
+int slurm_spank_init (spank_t sp, int ac, char **av)
+{
+    int i;
+
+    if (!spank_remote (sp))
+        return (0);
+
+    for (i = 0; i < ac; i++) {
+        if (strncmp ("mpibind=", av[i], 8) == 0) {
+            const char *opt = av[i] + 8;
+            if (strncmp (opt, "off", 4) == 0)
+                disabled = 1;
+            else
+                slurm_error ("mpibind: ignoring invalid option \"%s\"", av[i]);
+            break;
+        } else {
+            slurm_error ("mpibind: ignoring invalid option \"%s\"", av[i]);
+        }
+    }
+
+    return (0);
+}
 
 int slurm_spank_init_post_opt (spank_t sp, int32_t ac, char **av)
 {
