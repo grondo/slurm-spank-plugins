@@ -388,6 +388,73 @@ static void display_cpubind (char *message)
     }
 }
 
+/*
+ * smt_offset() discovers whether SMT (hyperthreading) is enabled and
+ * returns the offset to the first hyperthreaded PU when it is.
+ * Returns -1 when hyperthreading is not enabled.
+ */
+static int smt_offset (hwloc_topology_t topology)
+{
+    hwloc_cpuset_t cpuset;
+    hwloc_obj_t obj;
+    int depth;
+    int i;
+    int offset;
+
+    depth = hwloc_get_type_or_below_depth (topology, HWLOC_OBJ_CORE);
+    obj = hwloc_get_obj_by_depth (topology, depth, 0);
+    cpuset = hwloc_bitmap_dup (obj->cpuset);
+    i = hwloc_bitmap_first (cpuset);
+    offset = hwloc_bitmap_next (cpuset, i);
+    hwloc_bitmap_free (cpuset);
+
+    return offset;
+}
+
+/*
+ * decimate_cpuset() reduces a cpuset down to as few pu's as needed to
+ * host the number of threads.  The offset is a way to assign two
+ * threads to the same core.
+ */
+static void decimate_cpuset (hwloc_cpuset_t cpuset, int offset)
+{
+    int bits = hwloc_bitmap_weight (cpuset);
+    int i;
+    uint32_t thread = num_threads;
+
+    if (bits <= num_threads)
+        return;
+
+    i = hwloc_bitmap_first (cpuset);
+    if (offset > 0) {
+        do {
+            if (hwloc_bitmap_isset (cpuset, i)) {
+                if (thread)
+                    thread--;
+                else
+                    hwloc_bitmap_clr (cpuset, i);
+            }
+            if (hwloc_bitmap_isset (cpuset, i + offset)) {
+                if (thread)
+                    thread--;
+                else
+                    hwloc_bitmap_clr (cpuset, i + offset);
+            }
+            i = hwloc_bitmap_next (cpuset, i);
+        } while (i > 0 && i < offset);
+    } else {
+        do {
+            if (hwloc_bitmap_isset (cpuset, i)) {
+                if (thread)
+                    thread--;
+                else
+                    hwloc_bitmap_clr (cpuset, i);
+            }
+            i = hwloc_bitmap_next (cpuset, i);
+        } while (i > 0);
+    }
+}
+
 /* Assumes an equal number of gpus per numa node AND that the gpu id's
  * are ordered by increasing numa node ids, e.g.,
  *  GPU 0,1 go with numanode 0
@@ -412,9 +479,9 @@ static void decimate_gpusets (hwloc_cpuset_t *gpusets, uint32_t numaobjs,
         end = start + gpuspernuma;
         for (gpu = start; gpu < end; gpu++) {
             hwloc_bitmap_zero (bit_mask);
-            bits = hwloc_bitmap_weight(gpusets[gpu]);
+            bits = hwloc_bitmap_weight (gpusets[gpu]);
             bitspergpu = bits / gpuspernuma;
-            startbit = hwloc_bitmap_first(gpusets[gpu]) +
+            startbit = hwloc_bitmap_first (gpusets[gpu]) +
                 (gpu - start) * bitspergpu;
             endbit = startbit + bitspergpu - 1;
             hwloc_bitmap_set_range (bit_mask, startbit, endbit);
@@ -702,8 +769,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
 
     /*
      * Create the cpuset to which this task will be bound.  The
-     * resulting cpuset will be the union of as many cpusets[]
-     * elements that can be dedicated exclusively to this task.
+     * resulting cpuset will be the union of cpusets[] elements.
      *
      * Note: num_pus_per_task is a float value.  It allows us to
      * select cpusets[] elements that span the full range of available
@@ -733,9 +799,16 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         numaobjs = hwloc_get_nbobjs_inside_cpuset_by_type (topology, cpuset,
                                                            HWLOC_OBJ_NODE);
         if ((local_size < numaobjs) && (num_threads > 1)) {
-            slurm_verbose ("mpibind: Consider using at least %d MPI tasks per "
-                           "node\n", numaobjs);
+            slurm_verbose ("mpibind: rank %d spans %d NUMA domains\n",
+                         local_rank, numaobjs);
         }
+    }
+
+    if (num_threads == 1)
+        hwloc_bitmap_singlify (cpuset);
+    else {
+        int32_t offset = smt_offset (topology);
+        decimate_cpuset (cpuset, offset);
     }
 
     hwloc_bitmap_asprintf (&str, cpuset);
@@ -744,7 +817,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
 
     if (hwloc_set_cpubind (topology, cpuset, 0)) {
         slurm_error ("mpibind: could not bind to cpuset %s: %s", str,
-                     strerror(errno));
+                     strerror (errno));
     } else if (verbose > 2) {
         slurm_debug2 ("mpibind: bound cpuset %s\n", str);
     }
