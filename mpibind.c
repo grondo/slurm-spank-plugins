@@ -268,7 +268,7 @@ static int get_remote_env (spank_t sp)
          ESPANK_SUCCESS)) {
         local_rank = strtol (val, NULL, 10);
         if (verbose > 1)
-            slurm_debug ("mpibind: retrieved local rank %u", local_rank);
+            slurm_error ("mpibind: retrieved local rank %u", local_rank);
     } else {
         slurm_error ("mpibind: Failed to retrieve local rank from environment");
         goto ret;
@@ -277,7 +277,7 @@ static int get_remote_env (spank_t sp)
     if (spank_get_item (sp, S_JOB_LOCAL_TASK_COUNT, &local_size) ==
         ESPANK_SUCCESS) {
         if (verbose > 1)
-            slurm_debug ("mpibind: retrieved local size %u", local_size);
+            slurm_error ("mpibind: retrieved local size %u", local_size);
     } else {
         slurm_error ("mpibind: Failed to retrieve local size from environment");
         goto ret;
@@ -288,18 +288,18 @@ static int get_remote_env (spank_t sp)
         ESPANK_SUCCESS) {
         num_threads = strtol (val, NULL, 10);
         if (verbose > 1)
-            slurm_debug ("mpibind: found OMP_NUM_THREADS=%u", num_threads);
+            slurm_error ("mpibind: found OMP_NUM_THREADS=%u", num_threads);
     } else {
         /* for this case, num_threads will serve only to indicate
          * that OMP_NUM_THREADS was not set */
         num_threads = 0;
         if (verbose)
-            slurm_verbose ("mpibind: OMP_NUM_THREADS not defined");
+            slurm_error ("mpibind: OMP_NUM_THREADS not defined");
     }
 
     if (spank_getenv (sp, "MPIBIND", val, sizeof (val)) == ESPANK_SUCCESS) {
         if (verbose > 1)
-            slurm_debug ("mpibind: processing MPIBIND=%s", val);
+            slurm_error ("mpibind: processing MPIBIND=%s", val);
         rc = parse_user_option (0, val, 1);
     } else {
         rc = 0;
@@ -382,7 +382,7 @@ static void display_cpubind (char *message)
 
     if (!hwloc_get_cpubind (topology, cpuset, 0)) {
         hwloc_bitmap_asprintf (&str, cpuset);
-        printf ("mpibind: %s %s\n", message, str);
+        slurm_error ("mpibind: %s %s", message, str);
         hwloc_bitmap_free (cpuset);
         free (str);
     }
@@ -489,7 +489,7 @@ static void decimate_gpusets (hwloc_cpuset_t *gpusets, uint32_t numaobjs,
             if (!local_rank && verbose > 2) {
                 char *str = NULL;
                 hwloc_bitmap_asprintf (&str, gpusets[gpu]);
-                slurm_debug2 ("mpibind: GPU %u has cpuset %s", gpu, str);
+                slurm_error ("mpibind: GPU %u has cpuset %s", gpu, str);
                 free (str);
             }
         }
@@ -749,8 +749,8 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         num_pus_per_task = 1.0;
 
     if (!local_rank && verbose > 2)
-        slurm_debug2 ("mpibind: level size: %u, local size: %u, pus per task "
-                      "%f\n", level_size, local_size, num_pus_per_task);
+        slurm_error ("mpibind: level size: %u, local size: %u, pus per task %f",
+                     level_size, local_size, num_pus_per_task);
 
     /*
      * If the user did not set it, set the OMP_NUM_THREADS environment
@@ -763,7 +763,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         asprintf (&str, "%u", num_threads);
         spank_setenv (sp, "OMP_NUM_THREADS", str, 0);
         if (verbose > 2)
-            slurm_debug2 ("mpibind: setting OMP_NUM_THREADS to %s\n", str);
+            slurm_error ("mpibind: setting OMP_NUM_THREADS to %s", str);
         free (str);
     }
 
@@ -799,7 +799,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         numaobjs = hwloc_get_nbobjs_inside_cpuset_by_type (topology, cpuset,
                                                            HWLOC_OBJ_NODE);
         if ((local_size < numaobjs) && (num_threads > 1)) {
-            slurm_verbose ("mpibind: rank %d spans %d NUMA domains\n",
+            slurm_error ("mpibind: rank %d spans %d NUMA domains",
                          local_rank, numaobjs);
         }
     }
@@ -813,13 +813,14 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
 
     hwloc_bitmap_asprintf (&str, cpuset);
     if (verbose > 2)
-        slurm_debug2 ("mpibind: resulting cpuset %s\n", str);
+        slurm_error ("mpibind: resulting cpuset %s", str);
 
     if (hwloc_set_cpubind (topology, cpuset, 0)) {
-        slurm_error ("mpibind: could not bind to cpuset %s: %s", str,
-                     strerror (errno));
+        if (verbose)
+            slurm_error ("mpibind: could not bind to cpuset %s: %s", str,
+                         strerror (errno));
     } else if (verbose > 2) {
-        slurm_debug2 ("mpibind: bound cpuset %s\n", str);
+        slurm_error ("mpibind: bound cpuset %s", str);
     }
     free (str);
 
@@ -830,7 +831,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
     if ((str = get_gomp_str (cpuset))) {
         spank_setenv (sp, "GOMP_CPU_AFFINITY", str, 1);
         if (verbose > 1)
-            slurm_debug ("mpibind: GOMP_CPU_AFFINITY=%s\n", str);
+            slurm_error ("mpibind: GOMP_CPU_AFFINITY=%s", str);
         free (str);
     }
 
@@ -842,7 +843,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         if  ((str = get_cuda_str (gpus, gpu_bits))) {
             spank_setenv (sp, "CUDA_VISIBLE_DEVICES", str, 1);
             if (verbose > 1)
-                slurm_debug ("mpibind: CUDA_VISIBLE_DEVICES=%s\n", str);
+                slurm_error ("mpibind: CUDA_VISIBLE_DEVICES=%s", str);
             free (str);
         }
 
