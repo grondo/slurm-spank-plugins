@@ -502,16 +502,20 @@ ret:
 static char *get_gomp_str (hwloc_cpuset_t cpuset)
 {
     char *str = NULL;
-    int32_t i, j;
+    int32_t i, j, rc;
 
     i = hwloc_bitmap_first (cpuset);
     j = num_threads;
 
     while ((i != -1) && (j > 0)) {
         if (str)
-            asprintf (&str, "%s,%d", str, i);
+            rc = asprintf (&str, "%s,%d", str, i);
         else
-            asprintf (&str, "%d", i);
+            rc = asprintf (&str, "%d", i);
+        if (rc < 0) {
+            str = NULL;
+            break;
+        }
         i = hwloc_bitmap_next (cpuset, i);
         j--;
     }
@@ -522,14 +526,18 @@ static char *get_gomp_str (hwloc_cpuset_t cpuset)
 static char *get_cuda_str (int32_t gpus, uint32_t gpu_bits)
 {
     char *str = NULL;
-    int32_t i;
+    int32_t i, rc;
 
     for (i = 0; i < gpus; i++) {
         if ((1 << i) & gpu_bits) {
             if (str)
-                asprintf (&str, "%s,%d", str, i);
+                rc = asprintf (&str, "%s,%d", str, i);
             else
-                asprintf (&str, "%d", i);
+                rc = asprintf (&str, "%d", i);
+            if (rc < 0) {
+                str = NULL;
+                break;
+            }
         }
     }
 
@@ -757,14 +765,18 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
      * variable to the number of cores this task will have.
      */
     if (!num_threads) {
+        int rc;
         num_threads = num_cores / local_size;
         if (!num_threads)
             num_threads = 1;
-        asprintf (&str, "%u", num_threads);
-        spank_setenv (sp, "OMP_NUM_THREADS", str, 0);
-        if (verbose > 2)
-            slurm_error ("mpibind: setting OMP_NUM_THREADS to %s", str);
-        free (str);
+        rc = asprintf (&str, "%u", num_threads);
+        if (rc > 0) {
+            spank_setenv (sp, "OMP_NUM_THREADS", str, 0);
+            if (verbose > 2)
+                slurm_error ("mpibind: setting OMP_NUM_THREADS to %s", str);
+            free (str);
+        } else if (verbose)
+	  slurm_error ("mpibind: failed to set OMP_NUM_THREADS");
     }
 
     /*
