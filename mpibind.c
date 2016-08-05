@@ -708,9 +708,10 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         decimate_gpusets (gpusets, numaobjs, gpus);
     }
 
+    /*
+     * num_pus_per_task will be < 1.0 when pu's are over-committed.
+     */
     num_pus_per_task = (float) level_size / local_size;
-    if (num_pus_per_task < 1.0)
-        num_pus_per_task = 1.0;
 
     if (!local_rank && verbose > 2)
         slurm_error ("mpibind: level size: %u, local size: %u, pus per task %f",
@@ -745,6 +746,8 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
      * tasks to NUMA nodes for example.
      */
     index = (int32_t) (local_rank * num_pus_per_task);
+    if (num_pus_per_task < 1.0)
+        num_pus_per_task = 1.0;
 
     for (i = index; i < index + (int32_t) num_pus_per_task; i++) {
         hwloc_bitmap_or (cpuset, cpuset, cpusets[i]);
