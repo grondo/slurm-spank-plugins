@@ -389,34 +389,10 @@ static void display_cpubind (char *message)
 }
 
 /*
- * smt_offset() discovers whether SMT (hyperthreading) is enabled and
- * returns the offset to the first hyperthreaded PU when it is.
- * Returns -1 when hyperthreading is not enabled.
+ * decimate_cpuset() reduces a cpuset down to one processing unit per
+ * thread.  All unneded processing units' bits are cleared.
  */
-static int smt_offset (hwloc_topology_t topology)
-{
-    hwloc_cpuset_t cpuset;
-    hwloc_obj_t obj;
-    int depth;
-    int i;
-    int offset;
-
-    depth = hwloc_get_type_or_below_depth (topology, HWLOC_OBJ_CORE);
-    obj = hwloc_get_obj_by_depth (topology, depth, 0);
-    cpuset = hwloc_bitmap_dup (obj->cpuset);
-    i = hwloc_bitmap_first (cpuset);
-    offset = hwloc_bitmap_next (cpuset, i);
-    hwloc_bitmap_free (cpuset);
-
-    return offset;
-}
-
-/*
- * decimate_cpuset() reduces a cpuset down to as few pu's as needed to
- * host the number of threads.  The offset is a way to assign two
- * threads to the same core.
- */
-static void decimate_cpuset (hwloc_cpuset_t cpuset, int offset)
+static void decimate_cpuset (hwloc_cpuset_t cpuset)
 {
     int bits = hwloc_bitmap_weight (cpuset);
     int i;
@@ -426,33 +402,13 @@ static void decimate_cpuset (hwloc_cpuset_t cpuset, int offset)
         return;
 
     i = hwloc_bitmap_first (cpuset);
-    if (offset > 0) {
-        do {
-            if (hwloc_bitmap_isset (cpuset, i)) {
-                if (thread)
-                    thread--;
-                else
-                    hwloc_bitmap_clr (cpuset, i);
-            }
-            if (hwloc_bitmap_isset (cpuset, i + offset)) {
-                if (thread)
-                    thread--;
-                else
-                    hwloc_bitmap_clr (cpuset, i + offset);
-            }
-            i = hwloc_bitmap_next (cpuset, i);
-        } while (i > 0 && i < offset);
-    } else {
-        do {
-            if (hwloc_bitmap_isset (cpuset, i)) {
-                if (thread)
-                    thread--;
-                else
-                    hwloc_bitmap_clr (cpuset, i);
-            }
-            i = hwloc_bitmap_next (cpuset, i);
-        } while (i > 0);
-    }
+    do {
+        if (thread)
+            thread--;
+        else
+            hwloc_bitmap_clr (cpuset, i);
+        i = hwloc_bitmap_next (cpuset, i);
+    } while (i > 0);
 }
 
 /* Assumes an equal number of gpus per numa node AND that the gpu id's
@@ -818,10 +774,8 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
 
     if (num_threads == 1)
         hwloc_bitmap_singlify (cpuset);
-    else {
-        int32_t offset = smt_offset (topology);
-        decimate_cpuset (cpuset, offset);
-    }
+    else
+        decimate_cpuset (cpuset);
 
     hwloc_bitmap_asprintf (&str, cpuset);
     if (verbose > 2)
