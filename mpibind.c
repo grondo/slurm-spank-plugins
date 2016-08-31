@@ -679,17 +679,17 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         }
     }
 
-    for(obj = hwloc_get_next_osdev (topology, NULL); obj;
-        obj = hwloc_get_next_osdev (topology, obj)) {
+    for (obj = hwloc_get_next_osdev (topology, NULL); obj;
+         obj = hwloc_get_next_osdev (topology, obj)) {
         if (!strncmp (obj->name, "ib0", 3)) {
             /* NIC Affinity support goes here */
         }
     }
 
     /* count the GPUS */
-    for(obj = hwloc_get_next_pcidev (topology, NULL); obj;
-        obj = hwloc_get_next_pcidev (topology, obj)) {
-        if (!strncmp (obj->name, "NVIDIA", 6)) {
+    for (obj = hwloc_get_next_osdev (topology, NULL); obj;
+         obj = hwloc_get_next_osdev (topology, obj)) {
+        if (obj->attr->osdev.type == HWLOC_OBJ_OSDEV_GPU) {
             gpus++;
         }
     }
@@ -697,9 +697,9 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
     if (gpus) {
         gpusets = calloc (gpus, sizeof (hwloc_cpuset_t));
         gpus = 0;
-        for(obj = hwloc_get_next_pcidev (topology, NULL); obj;
-            obj = hwloc_get_next_pcidev (topology, obj)) {
-            if (!strncmp (obj->name, "NVIDIA", 6)) {
+        for (obj = hwloc_get_next_osdev (topology, NULL); obj;
+             obj = hwloc_get_next_osdev (topology, obj)) {
+            if (obj->attr->osdev.type == HWLOC_OBJ_OSDEV_GPU) {
                 hwloc_obj_t numaobj;
 #if HWLOC_API_VERSION < 0x00010b00
                 numaobj = hwloc_get_ancestor_obj_by_type (topology,
