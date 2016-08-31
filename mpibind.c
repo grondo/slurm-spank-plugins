@@ -509,6 +509,14 @@ static char *get_cuda_str (int32_t gpus, uint32_t gpu_bits)
 int slurm_spank_init (spank_t sp, int ac, char **av)
 {
     int i;
+    uint32_t hwloc_version = hwloc_get_api_version ();
+
+    if (hwloc_version != HWLOC_API_VERSION) {
+        if (verbose)
+            slurm_error ("mpibind plugin written for hwloc API 0x%x but running"
+                         "with hwloc library 0x%x", HWLOC_API_VERSION,
+                         hwloc_version);
+    }
 
     if (!spank_remote (sp))
         return (0);
@@ -692,8 +700,14 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         for(obj = hwloc_get_next_pcidev (topology, NULL); obj;
             obj = hwloc_get_next_pcidev (topology, obj)) {
             if (!strncmp (obj->name, "NVIDIA", 6)) {
-                hwloc_obj_t numaobj = hwloc_get_ancestor_obj_by_type (topology,
-                                                            HWLOC_OBJ_NODE, obj);
+                hwloc_obj_t numaobj;
+#if HWLOC_API_VERSION < 0x00010b00
+                numaobj = hwloc_get_ancestor_obj_by_type (topology,
+                                                          HWLOC_OBJ_NODE, obj);
+#else
+                numaobj = hwloc_get_ancestor_obj_by_type (topology,
+                                                        HWLOC_OBJ_NUMANODE, obj);
+#endif
                 if (numaobj) {
                     gpusets[gpus] = hwloc_bitmap_dup (numaobj->cpuset);
                     gpus++;
@@ -704,7 +718,11 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
                 }
             }
         }
+#if HWLOC_API_VERSION < 0x00010b00
         numaobjs = hwloc_get_nbobjs_by_type (topology, HWLOC_OBJ_NODE);
+#else
+        numaobjs = hwloc_get_nbobjs_by_type (topology, HWLOC_OBJ_NUMANODE);
+#endif
         decimate_gpusets (gpusets, numaobjs, gpus);
     }
 
@@ -767,8 +785,13 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
 
     if (verbose) {
         /* An MPI task with threads should not span more than one NUMA domain */
+#if HWLOC_API_VERSION < 0x00010b00
         numaobjs = hwloc_get_nbobjs_inside_cpuset_by_type (topology, cpuset,
                                                            HWLOC_OBJ_NODE);
+#else
+        numaobjs = hwloc_get_nbobjs_inside_cpuset_by_type (topology, cpuset,
+                                                           HWLOC_OBJ_NUMANODE);
+#endif
         if ((local_size < numaobjs) && (num_threads > 1)) {
             slurm_error ("mpibind: rank %d spans %d NUMA domains",
                          local_rank, numaobjs);
