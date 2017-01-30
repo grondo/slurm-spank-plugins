@@ -649,6 +649,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
                     cpusets[j] = hwloc_bitmap_dup (obj->cpuset);
                 } else {
                     slurm_error ("mpibind: failed to get core %d", i);
+                    return (ESPANK_ERROR);
                 }
                 j++;
             }
@@ -675,6 +676,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
             } else {
                 slurm_error ("mpibind: failed to get object %d at depth %d", i,
                              depth);
+                return (ESPANK_ERROR);
             }
         }
     }
@@ -718,7 +720,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
                     gpus++;
                 } else {
                     slurm_error ("mpibind: failed to find ancestor of GPU obj");
-                    break;
+                    return (ESPANK_ERROR);
                 }
             }
         }
