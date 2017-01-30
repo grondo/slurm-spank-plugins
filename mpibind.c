@@ -44,7 +44,7 @@ mpibind: Automatically assign CPU and GPU affinity using best-guess defaults.\n\
 \n\
 The default behavior attempts to bind MPI tasks to specific processing\n\
 units.  If OMP_NUM_THREADS is set, each thread will be similarly bound\n\
-to a processing unit.  MPI+OpenMP programs must set OMP_NUM_THREADS.\n\
+to a processing unit.\n\
 \n\
 Option Usage: --mpibind[=args...]\n\
   where args... is a period (.) separated list of one or more of the\n\
