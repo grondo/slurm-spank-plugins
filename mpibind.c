@@ -44,7 +44,7 @@ mpibind: Automatically assign CPU and GPU affinity using best-guess defaults.\n\
 \n\
 The default behavior attempts to bind MPI tasks to specific processing\n\
 units.  If OMP_NUM_THREADS is set, each thread will be similarly bound\n\
-to a processing unit.  MPI+OpenMP programs must set OMP_NUM_THREADS.\n\
+to a processing unit.\n\
 \n\
 Option Usage: --mpibind[=args...]\n\
   where args... is a period (.) separated list of one or more of the\n\
@@ -649,6 +649,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
                     cpusets[j] = hwloc_bitmap_dup (obj->cpuset);
                 } else {
                     slurm_error ("mpibind: failed to get core %d", i);
+                    return (ESPANK_ERROR);
                 }
                 j++;
             }
@@ -675,6 +676,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
             } else {
                 slurm_error ("mpibind: failed to get object %d at depth %d", i,
                              depth);
+                return (ESPANK_ERROR);
             }
         }
     }
@@ -700,21 +702,25 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         for (obj = hwloc_get_next_osdev (topology, NULL); obj;
              obj = hwloc_get_next_osdev (topology, obj)) {
             if (obj->attr->osdev.type == HWLOC_OBJ_OSDEV_GPU) {
-                hwloc_obj_t numaobj;
+                hwloc_obj_t ancestor;
 #if HWLOC_API_VERSION < 0x00010b00
-                numaobj = hwloc_get_ancestor_obj_by_type (topology,
+                ancestor = hwloc_get_ancestor_obj_by_type (topology,
                                                           HWLOC_OBJ_NODE, obj);
 #else
-                numaobj = hwloc_get_ancestor_obj_by_type (topology,
+                ancestor = hwloc_get_ancestor_obj_by_type (topology,
                                                         HWLOC_OBJ_NUMANODE, obj);
 #endif
-                if (numaobj) {
-                    gpusets[gpus] = hwloc_bitmap_dup (numaobj->cpuset);
+                if (!ancestor)
+                    /* The parent of GPUs on KNL nodes may be the
+                     * machine instead of a NUMA node*/
+                    ancestor = hwloc_get_ancestor_obj_by_type (topology,
+                                                        HWLOC_OBJ_MACHINE, obj);
+                if (ancestor) {
+                    gpusets[gpus] = hwloc_bitmap_dup (ancestor->cpuset);
                     gpus++;
                 } else {
-                    slurm_error ("mpibind: failed to get numa parent of NVIDIA "
-                                 "obj");
-                    break;
+                    slurm_error ("mpibind: failed to find ancestor of GPU obj");
+                    return (ESPANK_ERROR);
                 }
             }
         }
