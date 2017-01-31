@@ -1,3 +1,24 @@
+Version 0.36 (2017-01-31)
+- mpibind: Add early returns when serious errors occur
+           Address GPU parentage on KNL nodes
+           Update help message
+
+Version 0.35 (2016-08-31)
+- mpibind: Fix the GPU detection
+           Add hwloc version awareness
+
+Version 0.34 (2016-08-05)
+- mpibind: Fix bug with large task counts
+
+Version 0.33 (2016-08-05)
+- mpibind: Modify the distribution of threads to proc units
+           Process return code from asprintf() calls
+
+Version 0.32 (2016-07-21)
+- mpibind: Leverage slurm_error() to convey warnings to srun
+           Bind each thread to no more than one core
+           Support mpibind=off argument in plugstack.conf
+
 Version 0.31 (2016-07-08)
 - mpibind: Add missing verbosity check to two error statements
 
