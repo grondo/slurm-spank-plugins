@@ -31,6 +31,7 @@
 #include <sys/types.h>
 #include <ctype.h>
 #include <hwloc.h>
+#include <unistd.h>
 
 #include <slurm/slurm.h>
 #include <slurm/spank.h>
@@ -136,17 +137,45 @@ static int parse_option (const char *opt, int32_t remote)
     else if (!strncmp (opt, "w", 2))
         verbose = 1;
     else if (isdigit (opt[0])) {
+        /* provide a rough limit to the core value the user can request */
+        int32_t coreobjs = sysconf(_SC_NPROCESSORS_ONLN);
+
+        rc = -1;
         level_size = 0;
         cpubits = hwloc_bitmap_alloc ();
         hwloc_bitmap_zero (cpubits);
 
         while (opt[0]) {
             start = strtol (opt, &endptr, 10);
+            if (start < 0) {
+                fprintf (stderr, "mpibind: core value %ld may not be negative\n",
+                         start);
+                goto ret;
+            } else if (start > coreobjs) {
+                fprintf (stderr, "mpibind: core value %ld exceeds %d available "
+                         "cores\n", start, coreobjs);
+                goto ret;
+            }
             if (endptr[0]) {
                 if (!strncmp (endptr, "-", 1)) {
                     opt = endptr + 1;
                     if (opt[0]) {
                         end = strtol (opt, &endptr, 10);
+                        if (end < 0) {
+                            fprintf (stderr, "mpibind: core value %ld may not "
+                                     "be negative\n", end);
+                            goto ret;
+                        } else if (end > coreobjs) {
+                            fprintf (stderr, "mpibind: End core value %ld "
+                                     "exceeds %d available cores\n", end,
+                                     coreobjs);
+                            goto ret;
+                        } else if (start > end) {
+                            fprintf (stderr, "mpibind: End core value %ld must "
+                                     "be greater than starting core value %ld\n",
+                                     end, start);
+                            goto ret;
+                        }
                         hwloc_bitmap_set_range (cpubits, start, end);
                         level_size += end - start + 1;
                         if (endptr[0])
@@ -154,7 +183,8 @@ static int parse_option (const char *opt, int32_t remote)
                         else
                             opt = endptr;
                     } else {
-                        rc = -1;
+                        fprintf (stderr, "mpibind: End value missing from range "
+                                 "spec\n");
                         goto ret;
                     }
                 } else if (!strncmp (endptr, ",", 1)) {
@@ -162,7 +192,8 @@ static int parse_option (const char *opt, int32_t remote)
                     level_size++;
                     opt = endptr + 1;
                 } else {
-                    rc = -1;
+                    fprintf (stderr, "mpibind: Invalid option delimiter: %c\n",
+                            endptr[0]);
                     goto ret;
                 }
             } else {
@@ -177,6 +208,7 @@ static int parse_option (const char *opt, int32_t remote)
             else
                 printf ("mpibind: level size is %d\n", level_size);
         }
+        rc = 0;
     } else if ((strncmp (opt, "help", 5) == 0) && !remote) {
         fprintf (stderr, mpibind_help);
         exit (0);
