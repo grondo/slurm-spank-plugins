@@ -640,24 +640,25 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
 
     if (cpubits && !hwloc_bitmap_iszero (cpubits)) {
         int32_t coreobjs = hwloc_get_nbobjs_by_type (topology, HWLOC_OBJ_CORE);
-        int j = 0;
 
-        /* level_size has been set in process_opt() */
-        num_cores = level_size;
+        /* level_size has been set in parse_option() */
         cpusets = calloc (level_size, sizeof (hwloc_cpuset_t));
+        num_cores = 0;
 
         for (i = 0; i < coreobjs; i++) {
             if (hwloc_bitmap_isset (cpubits, i)) {
                 obj = hwloc_get_obj_by_type (topology, HWLOC_OBJ_CORE, i);
                 if (obj) {
-                    cpusets[j] = hwloc_bitmap_dup (obj->cpuset);
+                    cpusets[num_cores] = hwloc_bitmap_dup (obj->cpuset);
                 } else {
                     slurm_error ("mpibind: failed to get core %d", i);
                     return (ESPANK_ERROR);
                 }
-                j++;
+                num_cores++;
             }
         }
+        if (num_cores < level_size)
+            level_size = num_cores;
     } else {
         uint32_t depth;
         uint32_t topodepth = hwloc_topology_get_depth (topology);
