@@ -148,7 +148,10 @@ static int parse_option (const char *opt, int32_t remote)
                             cpus |= 1 << i;
                             level_size++;
                         }
-                        opt = endptr;
+                        if (endptr[0])
+                            opt = endptr + 1;
+                        else
+                            opt = endptr;
                     } else {
                         rc = -1;
                         goto ret;
