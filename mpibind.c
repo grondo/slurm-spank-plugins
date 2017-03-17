@@ -73,7 +73,7 @@ static hwloc_topology_t topology;
 static int32_t disabled = 0;       /* True if disabled by --mpibind=off       */
 static int32_t enabled = 1;        /* True if enabled by configuration        */
 static int32_t verbose = 0;
-static uint32_t cpus = 0;          /* a bitmap of <range> specified cores     */
+static hwloc_bitmap_t cpubits = NULL; /* bitmap of custom-specified cores     */
 static uint32_t level_size = 0;    /* number of processing units available    */
 static uint32_t local_rank = 0;    /* rank relative to this node              */
 static uint32_t local_size = 0;    /* number of tasks to run on this node     */
@@ -117,7 +117,7 @@ struct spank_option spank_options [] = {
 static int parse_option (const char *opt, int32_t remote)
 {
     char *endptr = NULL;
-    int32_t i, rc = 0;
+    int32_t rc = 0;
     int64_t start;
     int64_t end;
 
@@ -137,6 +137,9 @@ static int parse_option (const char *opt, int32_t remote)
         verbose = 1;
     else if (isdigit (opt[0])) {
         level_size = 0;
+        cpubits = hwloc_bitmap_alloc ();
+        hwloc_bitmap_zero (cpubits);
+
         while (opt[0]) {
             start = strtol (opt, &endptr, 10);
             if (endptr[0]) {
@@ -144,10 +147,8 @@ static int parse_option (const char *opt, int32_t remote)
                     opt = endptr + 1;
                     if (opt[0]) {
                         end = strtol (opt, &endptr, 10);
-                        for (i = start; i <= end; i++) {
-                            cpus |= 1 << i;
-                            level_size++;
-                        }
+                        hwloc_bitmap_set_range (cpubits, start, end);
+                        level_size += end - start + 1;
                         if (endptr[0])
                             opt = endptr + 1;
                         else
@@ -157,7 +158,7 @@ static int parse_option (const char *opt, int32_t remote)
                         goto ret;
                     }
                 } else if (!strncmp (endptr, ",", 1)) {
-                    cpus |= 1 << start;
+                    hwloc_bitmap_set (cpubits, start);
                     level_size++;
                     opt = endptr + 1;
                 } else {
@@ -165,16 +166,16 @@ static int parse_option (const char *opt, int32_t remote)
                     goto ret;
                 }
             } else {
-                cpus |= 1 << start;
+                hwloc_bitmap_set (cpubits, start);
                 level_size++;
                 break;
             }
         }
         if (verbose > 1) {
             if (remote)
-                slurm_debug ("mpibind: cpus is 0x%x", cpus);
+                slurm_debug ("mpibind: level size is %d", level_size);
             else
-                printf ("mpibind: cpus is 0x%x\n", cpus);
+                printf ("mpibind: level size is %d\n", level_size);
         }
     } else if ((strncmp (opt, "help", 5) == 0) && !remote) {
         fprintf (stderr, mpibind_help);
@@ -637,7 +638,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
      * thread.
      */
 
-    if (cpus) {
+    if (cpubits && !hwloc_bitmap_iszero (cpubits)) {
         int32_t coreobjs = hwloc_get_nbobjs_by_type (topology, HWLOC_OBJ_CORE);
         int j = 0;
 
@@ -646,7 +647,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         cpusets = calloc (level_size, sizeof (hwloc_cpuset_t));
 
         for (i = 0; i < coreobjs; i++) {
-            if (cpus & (1 << i)) {
+            if (hwloc_bitmap_isset (cpubits, i)) {
                 obj = hwloc_get_obj_by_type (topology, HWLOC_OBJ_CORE, i);
                 if (obj) {
                     cpusets[j] = hwloc_bitmap_dup (obj->cpuset);
@@ -865,6 +866,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
     }
     free (cpusets);
     hwloc_bitmap_free (cpuset);
+    hwloc_bitmap_free (cpubits);
 
     /* Destroy topology object. */
     hwloc_topology_destroy (topology);
