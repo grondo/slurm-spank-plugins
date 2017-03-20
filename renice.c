@@ -118,7 +118,7 @@ int slurm_spank_task_post_fork (spank_t sp, int ac, char **av)
     if (prio == getpriority (PRIO_PROCESS, (int) pid))
         return (0);
 
-    slurm_verbose ("re-nicing task%d pid %ld to %d\n", taskid, pid, prio);
+    slurm_verbose ("re-nicing task%d pid %d to %d\n", taskid, pid, prio);
 
     if (setpriority (PRIO_PROCESS, (int) pid, (int) prio) < 0) {
         slurm_error ("setpriority: %m");
