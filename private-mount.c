@@ -338,7 +338,7 @@ static int _opt_fs_namespace (int val, const char *optarg, int remote)
 
 static int _opt_private_mount (int val, const char *optarg, int remote)
 {
-    ListIterator itr;
+    ListIterator itr = NULL;
     char *name, *cpy;
     int rc = 0;
 

@@ -31,6 +31,7 @@
 #include <sys/types.h>
 #include <ctype.h>
 #include <hwloc.h>
+#include <unistd.h>
 
 #include <slurm/slurm.h>
 #include <slurm/spank.h>
@@ -73,7 +74,7 @@ static hwloc_topology_t topology;
 static int32_t disabled = 0;       /* True if disabled by --mpibind=off       */
 static int32_t enabled = 1;        /* True if enabled by configuration        */
 static int32_t verbose = 0;
-static uint32_t cpus = 0;          /* a bitmap of <range> specified cores     */
+static hwloc_bitmap_t cpubits = NULL; /* bitmap of custom-specified cores     */
 static uint32_t level_size = 0;    /* number of processing units available    */
 static uint32_t local_rank = 0;    /* rank relative to this node              */
 static uint32_t local_size = 0;    /* number of tasks to run on this node     */
@@ -117,7 +118,7 @@ struct spank_option spank_options [] = {
 static int parse_option (const char *opt, int32_t remote)
 {
     char *endptr = NULL;
-    int32_t i, rc = 0;
+    int32_t rc = 0;
     int64_t start;
     int64_t end;
 
@@ -136,43 +137,78 @@ static int parse_option (const char *opt, int32_t remote)
     else if (!strncmp (opt, "w", 2))
         verbose = 1;
     else if (isdigit (opt[0])) {
+        /* provide a rough limit to the core value the user can request */
+        int32_t coreobjs = sysconf(_SC_NPROCESSORS_ONLN);
+
+        rc = -1;
         level_size = 0;
+        cpubits = hwloc_bitmap_alloc ();
+        hwloc_bitmap_zero (cpubits);
+
         while (opt[0]) {
             start = strtol (opt, &endptr, 10);
+            if (start < 0) {
+                fprintf (stderr, "mpibind: core value %ld may not be negative\n",
+                         start);
+                goto ret;
+            } else if (start > coreobjs) {
+                fprintf (stderr, "mpibind: core value %ld exceeds %d available "
+                         "cores\n", start, coreobjs);
+                goto ret;
+            }
             if (endptr[0]) {
                 if (!strncmp (endptr, "-", 1)) {
                     opt = endptr + 1;
                     if (opt[0]) {
                         end = strtol (opt, &endptr, 10);
-                        for (i = start; i <= end; i++) {
-                            cpus |= 1 << i;
-                            level_size++;
+                        if (end < 0) {
+                            fprintf (stderr, "mpibind: core value %ld may not "
+                                     "be negative\n", end);
+                            goto ret;
+                        } else if (end > coreobjs) {
+                            fprintf (stderr, "mpibind: End core value %ld "
+                                     "exceeds %d available cores\n", end,
+                                     coreobjs);
+                            goto ret;
+                        } else if (start > end) {
+                            fprintf (stderr, "mpibind: End core value %ld must "
+                                     "be greater than starting core value %ld\n",
+                                     end, start);
+                            goto ret;
                         }
-                        opt = endptr;
+                        hwloc_bitmap_set_range (cpubits, start, end);
+                        level_size += end - start + 1;
+                        if (endptr[0])
+                            opt = endptr + 1;
+                        else
+                            opt = endptr;
                     } else {
-                        rc = -1;
+                        fprintf (stderr, "mpibind: End value missing from range "
+                                 "spec\n");
                         goto ret;
                     }
                 } else if (!strncmp (endptr, ",", 1)) {
-                    cpus |= 1 << start;
+                    hwloc_bitmap_set (cpubits, start);
                     level_size++;
                     opt = endptr + 1;
                 } else {
-                    rc = -1;
+                    fprintf (stderr, "mpibind: Invalid option delimiter: %c\n",
+                            endptr[0]);
                     goto ret;
                 }
             } else {
-                cpus |= 1 << start;
+                hwloc_bitmap_set (cpubits, start);
                 level_size++;
                 break;
             }
         }
         if (verbose > 1) {
             if (remote)
-                slurm_debug ("mpibind: cpus is 0x%x", cpus);
+                slurm_debug ("mpibind: level size is %d", level_size);
             else
-                printf ("mpibind: cpus is 0x%x\n", cpus);
+                printf ("mpibind: level size is %d\n", level_size);
         }
+        rc = 0;
     } else if ((strncmp (opt, "help", 5) == 0) && !remote) {
         fprintf (stderr, mpibind_help);
         exit (0);
@@ -634,26 +670,27 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
      * thread.
      */
 
-    if (cpus) {
+    if (cpubits && !hwloc_bitmap_iszero (cpubits)) {
         int32_t coreobjs = hwloc_get_nbobjs_by_type (topology, HWLOC_OBJ_CORE);
-        int j = 0;
 
-        /* level_size has been set in process_opt() */
-        num_cores = level_size;
+        /* level_size has been set in parse_option() */
         cpusets = calloc (level_size, sizeof (hwloc_cpuset_t));
+        num_cores = 0;
 
         for (i = 0; i < coreobjs; i++) {
-            if (cpus & (1 << i)) {
+            if (hwloc_bitmap_isset (cpubits, i)) {
                 obj = hwloc_get_obj_by_type (topology, HWLOC_OBJ_CORE, i);
                 if (obj) {
-                    cpusets[j] = hwloc_bitmap_dup (obj->cpuset);
+                    cpusets[num_cores] = hwloc_bitmap_dup (obj->cpuset);
                 } else {
                     slurm_error ("mpibind: failed to get core %d", i);
                     return (ESPANK_ERROR);
                 }
-                j++;
+                num_cores++;
             }
         }
+        if (num_cores < level_size)
+            level_size = num_cores;
     } else {
         uint32_t depth;
         uint32_t topodepth = hwloc_topology_get_depth (topology);
@@ -862,6 +899,7 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
     }
     free (cpusets);
     hwloc_bitmap_free (cpuset);
+    hwloc_bitmap_free (cpubits);
 
     /* Destroy topology object. */
     hwloc_topology_destroy (topology);

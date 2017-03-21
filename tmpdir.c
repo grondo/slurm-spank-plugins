@@ -57,7 +57,7 @@ int slurm_spank_local_user_init (spank_t sp, int ac, char **av)
     n = snprintf (buf, sizeof (buf), "%s/%u.%u", tmpdir, jobid, stepid);
 
     if ((n < 0) || (n > sizeof (buf) - 1)) {
-        slurm_error ("TMPDIR = \"%s\" too large. Aborting");
+        slurm_error ("TMPDIR = \"%s\" too large. Aborting", buf);
         return (-1);
     }
 
