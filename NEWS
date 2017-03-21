@@ -1,3 +1,8 @@
+Version 0.37 (2017-03-21)
+- mpibind: Fix bugs when specific cores requested
+           Add core option range checks
+- various: Fix causes of compiler warnings
+
 Version 0.36 (2017-01-31)
 - mpibind: Add early returns when serious errors occur
            Address GPU parentage on KNL nodes
