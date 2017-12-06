@@ -920,17 +920,17 @@ static int l_spank_log_msg (lua_State *L)
         return (0);
 
     if (level == -1) {
-        slurm_error (msg);
+        slurm_error ("%s", msg);
         lua_pushnumber (L, -1);
         return (1);
     }
 
     if (level == 0)
-        slurm_info (msg);
+        slurm_info ("%s", msg);
     else if (level == 1)
-        slurm_verbose (msg);
+        slurm_verbose ("%s", msg);
     else if (level == 2)
-        slurm_debug (msg);
+        slurm_debug ("%s", msg);
     return (0);
 }
 
