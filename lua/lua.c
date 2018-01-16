@@ -1328,6 +1328,9 @@ int slurm_spank_init (spank_t sp, int ac, char *av[])
 {
     if (spank_lua_init (sp, ac, av) < 0)
         return (-1);
+
+    if (lua_script_list == NULL)
+        return (0);
     /*
      *  Register options in global 'spank_options' table
      */
