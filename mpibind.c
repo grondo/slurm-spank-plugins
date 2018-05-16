@@ -425,6 +425,10 @@ static void display_cpubind (char *message)
 }
 
 /*
+ * worker functions.
+ */
+
+/*
  * decimate_cpuset() reduces a cpuset down to one processing unit per
  * thread.  All unneded processing units' bits are cleared.
  */
@@ -447,49 +451,39 @@ static void decimate_cpuset (hwloc_cpuset_t cpuset)
     } while (i > 0);
 }
 
-/* Assumes an equal number of gpus per numa node AND that the gpu id's
- * are ordered by increasing numa node ids, e.g.,
- *  GPU 0,1 go with numanode 0
- *  GPU 2,3 go with numanode 1
+/*
+ * map ranks to numas or gpus or vice-versa
  */
-static void decimate_gpusets (hwloc_cpuset_t *gpusets, uint32_t numaobjs,
-                              uint32_t gpus)
+static int map_to_domains( int32_t rank, int32_t np, int32_t ndoms, int32_t *mapi, int32_t *np_in_dom, int32_t *id_in_dom )
 {
-    uint32_t numa, gpu;
-    uint32_t gpuspernuma;
-    uint32_t bits, bitspergpu;
-    uint32_t start, end;
-    uint32_t startbit, endbit;
-    hwloc_bitmap_t bit_mask = hwloc_bitmap_alloc();
+    int32_t i, cum_np, np_per_dom_ave, np_per_dom_extra, tmp;
+    int32_t prev;
 
-    if (!(gpusets && numaobjs && gpus))
-        goto ret;
-    gpuspernuma = gpus / numaobjs;
+    np_per_dom_ave = np / ndoms;
+    np_per_dom_extra = np % ndoms;
 
-    for (numa = 0; numa < numaobjs; numa++) {
-        start = numa * gpuspernuma;
-        end = start + gpuspernuma;
-        for (gpu = start; gpu < end; gpu++) {
-            hwloc_bitmap_zero (bit_mask);
-            bits = hwloc_bitmap_weight (gpusets[gpu]);
-            bitspergpu = bits / gpuspernuma;
-            startbit = hwloc_bitmap_first (gpusets[gpu]) +
-                (gpu - start) * bitspergpu;
-            endbit = startbit + bitspergpu - 1;
-            hwloc_bitmap_set_range (bit_mask, startbit, endbit);
-            hwloc_bitmap_and (gpusets[gpu], gpusets[gpu], bit_mask);
-            if (!local_rank && verbose > 2) {
-                char *str = NULL;
-                hwloc_bitmap_asprintf (&str, gpusets[gpu]);
-                slurm_error ("mpibind: GPU %u has cpuset %s", gpu, str);
-                free (str);
-            }
+    cum_np=0;
+    for (i=0; i<ndoms; i++){
+        if( i < np_per_dom_extra ){
+            tmp=np_per_dom_ave+1;
+        }else{
+            tmp=np_per_dom_ave;
+        }
+        prev = cum_np;
+        cum_np = cum_np+tmp;
+        if( rank < cum_np ){
+            *mapi = i;
+            *np_in_dom = tmp;
+            *id_in_dom = (rank-prev)%tmp;
+            return 0;
         }
     }
-ret:
-    hwloc_bitmap_free (bit_mask);
-    return;
+    return 1;
 }
+
+/*
+ * functions to generate strings for environment variables
+ */
 
 static char *get_gomp_str (hwloc_cpuset_t cpuset)
 {
@@ -515,24 +509,124 @@ static char *get_gomp_str (hwloc_cpuset_t cpuset)
     return str;
 }
 
-static char *get_cuda_str (int32_t gpus, uint32_t gpu_bits)
+/*
+ * assign tasks to gpus and vice verso
+ * follows Edgar Leon Borja's algorithm from 'mpibind8'
+ */
+static char *get_gpustring( int32_t gpus, int32_t numas, uint32_t *numagroup )
 {
     char *str = NULL;
-    int32_t i, rc;
+    hwloc_obj_t obj;
+    int32_t mapped_numa=0, mapped_np_in_numa=0, mapped_id_in_numa=0;
+    uint32_t (*gpus_in_numa)[gpus] = malloc(sizeof(uint32_t[numas][gpus]));
+    uint32_t (*gpus_in_group)[gpus] = malloc(sizeof(uint32_t[numas][gpus]));
+    uint32_t *gpus_per_numa = calloc (numas, sizeof (uint32_t));
+    uint32_t *gpus_per_group = calloc (numas, sizeof (uint32_t));
+    uint32_t i=0, j=0;
 
-    for (i = 0; i < gpus; i++) {
-        if ((1 << i) & gpu_bits) {
-            if (str)
-                rc = asprintf (&str, "%s,%d", str, i);
-            else
-                rc = asprintf (&str, "%d", i);
-            if (rc < 0) {
-                str = NULL;
-                break;
+    /*
+     * assign gpus to parent numas by topology
+     */
+    gpus = 0;
+    for (obj = hwloc_get_next_osdev (topology, NULL); obj;
+         obj = hwloc_get_next_osdev (topology, obj)) {
+        if ( (obj->attr->osdev.type == HWLOC_OBJ_OSDEV_GPU) &&
+             (strncmp(obj->name,"render",6) == 0) ) {
+            hwloc_obj_t ancestor;
+#if HWLOC_API_VERSION < 0x00010b00
+            ancestor = hwloc_get_ancestor_obj_by_type (topology,
+                                                      HWLOC_OBJ_NODE, obj);
+#else
+            ancestor = hwloc_get_ancestor_obj_by_type (topology,
+                                                    HWLOC_OBJ_NUMANODE, obj);
+#endif
+            if (!ancestor)
+                /* The parent of GPUs on KNL nodes may be the
+                 * machine instead of a NUMA node*/
+                ancestor = hwloc_get_ancestor_obj_by_type (topology,
+                                                    HWLOC_OBJ_MACHINE, obj);
+            if (ancestor) {
+                gpus_in_numa[ancestor->os_index][gpus_per_numa[ancestor->os_index]]=gpus;
+                gpus_in_group[numagroup[ancestor->os_index]][gpus_per_group[numagroup[ancestor->os_index]]]=gpus;
+                gpus_per_numa[ancestor->os_index]++;
+                gpus_per_group[numagroup[ancestor->os_index]]++;
+                gpus++;
+            } else {
+                slurm_error ("mpibind: failed to find ancestor of GPU obj");
+                return NULL;
             }
         }
     }
 
+    /*
+     * assign gpus to numas that don't have gpus
+     */
+    for(i=0; i<numas; i++){
+       if( gpus_per_numa[i] == 0 ){
+            //best: take gpus from group
+            if( gpus_per_group[numagroup[i]] > 0 ){
+                gpus_per_numa[i] = gpus_per_group[numagroup[i]];
+                for(j=0; j < gpus_per_group[numagroup[i]]; j++){
+                    gpus_in_numa[i][j] = gpus_in_group[numagroup[i]][j];
+                }
+            //worst: take whatever you can get.
+            }else{
+                int k=0;
+                while(gpus_per_numa[k] == 0 && k < numas){
+                    k++;
+                }
+                gpus_per_numa[i] = gpus_per_numa[k];
+                for(j=0; j<gpus_per_numa[k]; j++){
+                   gpus_in_numa[i][j] = gpus_in_numa[k][j];
+                }
+            }
+        }
+    }
+
+    /*
+     * map tasks to numas
+     */
+    if( map_to_domains( local_rank, local_size, numas, &mapped_numa, &mapped_np_in_numa, &mapped_id_in_numa) != 0 ){
+        slurm_error ("mpibind: failed to map tasks to nums\n");
+        return NULL;
+    }
+
+    /*
+     * map GPUs and tasks
+     * case 1: More tasks than GPUs
+     * case 2: More GPUs than tasks
+     */
+    if( mapped_np_in_numa >= gpus_per_numa[mapped_numa] ){           // case 1
+        int32_t mapped_gpu=0, mapped_np_in_gpu=0, mapped_id_in_gpu=0;
+        if( map_to_domains( mapped_id_in_numa, mapped_np_in_numa, gpus_per_numa[mapped_numa],
+                            &mapped_gpu, &mapped_np_in_gpu, &mapped_id_in_gpu) != 0 ){
+            slurm_error("mpibind: failed to map tasks to gpus\n");
+            return NULL;
+        }
+        asprintf(&str, "%d", gpus_in_numa[mapped_numa][mapped_gpu]);
+    }else{                                                          // case 2
+        for( i=0; i<gpus_per_numa[mapped_numa]; i++ ){
+            int32_t mapped_task=0, mapped_gpus_in_task=0, mapped_id_in_task=0;
+            if( map_to_domains( i, gpus_per_numa[mapped_numa], mapped_np_in_numa,
+                               &mapped_task, &mapped_gpus_in_task, &mapped_id_in_task ) != 0 ){
+                slurm_error("mpibind:failed to map gpus to tasks\n");
+                return NULL;
+            }
+            if( mapped_id_in_numa == mapped_task ){
+                for(j=0; j<gpus_per_numa[mapped_numa]; j++){
+                    if( j==0 ){
+                        asprintf(&str,"%d",gpus_in_numa[mapped_numa][j]);
+                    }else{
+                        asprintf(&str,"%s %d",str, gpus_in_numa[mapped_numa][j]);
+                    }
+                }
+           }
+        }
+    }
+    free(gpus_in_numa);
+    free(gpus_in_group);
+    free(gpus_per_numa);
+    free(gpus_per_group);
     return str;
 }
 
@@ -627,16 +721,16 @@ int slurm_spank_user_init (spank_t sp, int32_t ac, char **av)
 int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
 {
     char *str;
+    char *gpustr;
     float num_pus_per_task;
     hwloc_cpuset_t *cpusets = NULL;
-    hwloc_cpuset_t *gpusets = NULL;
     hwloc_cpuset_t cpuset;
     hwloc_obj_t obj;
-    int32_t gpus = 0;
+    int32_t gpus = 0, numas = 0;
     int32_t i;
     int32_t index;
     int32_t numaobjs;
-    uint32_t gpu_bits = 0;
+    uint32_t *numagroup;
 
     if (!spank_remote (sp))
         return (0);
@@ -725,21 +819,22 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
         }
     }
 
-    /* count the GPUS */
+    /* count the GPUS and then assign them to numas*/
+    /* HWLOC_OBJ_OSDEV_GPU ids multiple objects per gpu,
+     * as well as the controller, thus the need to only count 'render' objs
+     */
+#if HWLOC_API_VERSION < 0x00010b00
+        numas = hwloc_get_nbobjs_by_type(topology,HWLOC_OBJ_NODE);
+#else
+        numas = hwloc_get_nbobjs_by_type(topology,HWLOC_OBJ_NUMANODE);
+#endif
+    numagroup=calloc(numas, sizeof(uint32_t));
     for (obj = hwloc_get_next_osdev (topology, NULL); obj;
          obj = hwloc_get_next_osdev (topology, obj)) {
-        if (obj->attr->osdev.type == HWLOC_OBJ_OSDEV_GPU) {
-            gpus++;
-        }
-    }
-
-    if (gpus) {
-        gpusets = calloc (gpus, sizeof (hwloc_cpuset_t));
-        gpus = 0;
-        for (obj = hwloc_get_next_osdev (topology, NULL); obj;
-             obj = hwloc_get_next_osdev (topology, obj)) {
-            if (obj->attr->osdev.type == HWLOC_OBJ_OSDEV_GPU) {
-                hwloc_obj_t ancestor;
+        if ( (obj->attr->osdev.type == HWLOC_OBJ_OSDEV_GPU) &&
+            (strncmp(obj->name,"render",6) == 0) ) {
+            hwloc_obj_t ancestor;
+            hwloc_obj_t ancestor2;
 #if HWLOC_API_VERSION < 0x00010b00
                 ancestor = hwloc_get_ancestor_obj_by_type (topology,
                                                           HWLOC_OBJ_NODE, obj);
@@ -752,22 +847,29 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
                      * machine instead of a NUMA node*/
                     ancestor = hwloc_get_ancestor_obj_by_type (topology,
                                                         HWLOC_OBJ_MACHINE, obj);
-                if (ancestor) {
-                    gpusets[gpus] = hwloc_bitmap_dup (ancestor->cpuset);
-                    gpus++;
-                } else {
-                    slurm_error ("mpibind: failed to find ancestor of GPU obj");
-                    return (ESPANK_ERROR);
-                }
+            ancestor2 = hwloc_get_ancestor_obj_by_type (topology,
+                                                        HWLOC_OBJ_GROUP, ancestor);
+            if( !ancestor2 ){
+                ancestor2 = hwloc_get_ancestor_obj_by_type(topology,
+                                                           HWLOC_OBJ_MACHINE, ancestor);
             }
+            numagroup[ancestor->os_index] = ancestor2->os_index;
+            gpus++;
         }
-#if HWLOC_API_VERSION < 0x00010b00
-        numaobjs = hwloc_get_nbobjs_by_type (topology, HWLOC_OBJ_NODE);
-#else
-        numaobjs = hwloc_get_nbobjs_by_type (topology, HWLOC_OBJ_NUMANODE);
-#endif
-        decimate_gpusets (gpusets, numaobjs, gpus);
     }
+
+    /*
+     * assign tasks to gpus or gpus to tasks as appropriate
+     * put it in a string
+     */
+    if (gpus) {
+        gpustr = get_gpustring(gpus, numas, numagroup);
+        if( gpustr == NULL ){
+            slurm_error ("mpibind: failed to assign %d gpus", gpus);
+            return (ESPANK_ERROR);
+        }
+    }
+    free(numagroup);
 
     /*
      * num_pus_per_task will be < 1.0 when pu's are over-committed.
@@ -812,18 +914,6 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
 
     for (i = index; i < index + (int32_t) num_pus_per_task; i++) {
         hwloc_bitmap_or (cpuset, cpuset, cpusets[i]);
-        if (gpus) {
-            int32_t j;
-            hwloc_bitmap_t result = hwloc_bitmap_alloc();
-
-            for (j = 0; j < gpus; j++) {
-                hwloc_bitmap_and (result, cpusets[i], gpusets[j]);
-                if (!hwloc_bitmap_iszero (result)) {
-                    gpu_bits |= (1 << j);
-                }
-            }
-            hwloc_bitmap_free (result);
-        }
     }
 
     if (verbose) {
@@ -875,18 +965,10 @@ int slurm_spank_task_init (spank_t sp, int32_t ac, char **av)
      * environment variable that we did for GOMP_CPU_AFFINITY above.
      */
     if (gpus) {
-        if  ((str = get_cuda_str (gpus, gpu_bits))) {
-            spank_setenv (sp, "CUDA_VISIBLE_DEVICES", str, 1);
-            if (verbose > 1)
-                slurm_error ("mpibind: CUDA_VISIBLE_DEVICES=%s", str);
-            free (str);
-        }
-
-        /* Free our gpusets */
-        for (i = 0; i < gpus; i++) {
-            hwloc_bitmap_free (gpusets[i]);
-        }
-        free (gpusets);
+        spank_setenv (sp, "CUDA_VISIBLE_DEVICES", gpustr, 1);
+        if (verbose > 1)
+            slurm_error ("mpibind: CUDA_VISIBLE_DEVICES=%s", gpustr);
+        free (gpustr);
     }
 
     if (verbose > 1) {
