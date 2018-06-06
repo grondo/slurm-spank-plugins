@@ -33,10 +33,12 @@
 #define __USE_GNU
 #include <sched.h>
 
+/* Include list.h before slurm.h since slurm header stole our List type */
+#include "lib/list.h"
+
 #include <slurm/slurm.h>
 #include <slurm/spank.h>
 
-#include "lib/list.h"
 #include "lib/split.h"
 #include "lib/fd.h"
 

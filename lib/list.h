@@ -25,7 +25,8 @@
 
 #ifndef LSD_LIST_H
 #define LSD_LIST_H
-
+/*  Depressing workaround for slurm.h inclusion of our List typedef */
+#define __list_datatypes_defined
 
 /***********
  *  Notes  *
